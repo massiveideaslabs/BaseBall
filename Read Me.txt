@@ -1,0 +1,3 @@
+# My First Cursor Project
+
+This is my first project using Cursor, Git, and GitHub.
