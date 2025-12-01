@@ -250,17 +250,55 @@ export function WalletProvider({ children }: { children: ReactNode }) {
         },
       })
 
+      // Check if already connected
+      if (wcProvider.session) {
+        // Already have a session, use it
+        const accounts = wcProvider.accounts
+        if (accounts.length > 0) {
+          const browserProvider = new ethers.BrowserProvider(wcProvider as any)
+          const networkOk = await ensureCorrectNetwork(browserProvider)
+          if (!networkOk) {
+            await wcProvider.disconnect()
+            return
+          }
+          const signer = await browserProvider.getSigner()
+          const address = await signer.getAddress()
+          setWalletConnectProvider(wcProvider)
+          setProvider(browserProvider)
+          setSigner(signer)
+          setAccount(address)
+          
+          // Set up event listeners
+          wcProvider.on('disconnect', () => {
+            disconnectWallet()
+          })
+          wcProvider.on('accountsChanged', (accounts: string[]) => {
+            if (accounts.length > 0) {
+              setAccount(accounts[0])
+            } else {
+              disconnectWallet()
+            }
+          })
+          return
+        }
+      }
+
       // Enable session - this will show the QR modal
-      // The modal will appear automatically when enable() is called
       await wcProvider.enable()
 
-      // Wait a bit for the connection to be established
-      await new Promise(resolve => setTimeout(resolve, 500))
+      // Wait for session to be established by polling for accounts
+      // This ensures we wait for user approval
+      let attempts = 0
+      const maxAttempts = 60 // 30 seconds max wait
+      while (wcProvider.accounts.length === 0 && attempts < maxAttempts) {
+        await new Promise(resolve => setTimeout(resolve, 500))
+        attempts++
+      }
 
-      // Get accounts
+      // Get accounts after waiting
       const accounts = wcProvider.accounts
       if (accounts.length === 0) {
-        throw new Error('No accounts found. Please approve the connection in your wallet.')
+        throw new Error('Connection timeout. Please try again and approve the connection in your wallet.')
       }
 
       // Create ethers provider from WalletConnect provider
