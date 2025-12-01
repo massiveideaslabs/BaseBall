@@ -1,0 +1,19 @@
+[
+  "function createGame(uint8 difficulty, uint256 expirationDuration) external payable returns (uint256)",
+  "function joinGame(uint256 gameId) external payable",
+  "function cancelGame(uint256 gameId) external",
+  "function cancelExpiredGame(uint256 gameId) external",
+  "function completeGame(uint256 gameId, address winner) external",
+  "function getGame(uint256 gameId) external view returns (tuple(address host, address player, uint256 wager, uint8 difficulty, uint8 status, uint256 gameId, uint256 createdAt, uint256 expiresAt))",
+  "function getAllPendingGames() external view returns (tuple(address host, address player, uint256 wager, uint8 difficulty, uint8 status, uint256 gameId, uint256 createdAt, uint256 expiresAt)[])",
+  "function getPlayerStats(address player) external view returns (tuple(uint256 wins, uint256 totalWinnings, uint256 gamesPlayed))",
+  "function playerStats(address) external view returns (uint256 wins, uint256 totalWinnings, uint256 gamesPlayed)",
+  "event GameCreated(uint256 indexed gameId, address indexed host, uint256 wager, uint8 difficulty)",
+  "event GameJoined(uint256 indexed gameId, address indexed player)",
+  "event GameCancelled(uint256 indexed gameId, address indexed host)",
+  "event GameCompleted(uint256 indexed gameId, address indexed winner, uint256 winnings)",
+  "event WagerDeposited(uint256 indexed gameId, address indexed player, uint256 amount)"
+]
+
+
+
