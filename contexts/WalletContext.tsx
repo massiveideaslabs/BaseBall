@@ -236,6 +236,7 @@ export function WalletProvider({ children }: { children: ReactNode }) {
     }
 
     try {
+      console.log('Initializing WalletConnect provider...')
       // Initialize WalletConnect provider
       const wcProvider = await EthereumProvider.init({
         projectId,
@@ -249,6 +250,7 @@ export function WalletProvider({ children }: { children: ReactNode }) {
           icons: [`${typeof window !== 'undefined' ? window.location.origin : ''}/favicon.ico`],
         },
       })
+      console.log('WalletConnect provider initialized, session:', wcProvider.session, 'accounts:', wcProvider.accounts)
 
       // Listen for session_delete event (when request is reset/cancelled)
       wcProvider.on('session_delete', (error: any) => {
@@ -257,7 +259,17 @@ export function WalletProvider({ children }: { children: ReactNode }) {
 
       // Listen for display_uri event to see the connection URI
       wcProvider.on('display_uri', (uri: string) => {
-        console.log('WalletConnect URI:', uri)
+        console.log('WalletConnect URI generated:', uri.substring(0, 50) + '...')
+      })
+
+      // Listen for session_request event
+      wcProvider.on('session_request', (event: any) => {
+        console.log('WalletConnect session_request event:', event)
+      })
+
+      // Listen for session_proposal event
+      wcProvider.on('session_proposal', (event: any) => {
+        console.log('WalletConnect session_proposal event:', event)
       })
 
       // Check if already connected
@@ -364,12 +376,25 @@ export function WalletProvider({ children }: { children: ReactNode }) {
         const maxPolls = 120 // 60 seconds with 500ms intervals
         const pollInterval = setInterval(() => {
           pollCount++
-          if (wcProvider.session && wcProvider.accounts.length > 0) {
-            console.log('WalletConnect connected via polling')
+          const hasSession = !!wcProvider.session
+          const accountCount = wcProvider.accounts?.length || 0
+          
+          if (pollCount % 10 === 0) { // Log every 5 seconds
+            console.log(`WalletConnect polling (${pollCount}/${maxPolls}):`, {
+              hasSession,
+              accountCount,
+              sessionTopic: wcProvider.session?.topic,
+              accounts: wcProvider.accounts
+            })
+          }
+          
+          if (hasSession && accountCount > 0) {
+            console.log('WalletConnect connected via polling!')
             clearInterval(pollInterval)
             cleanup()
             resolve()
           } else if (pollCount >= maxPolls) {
+            console.log('WalletConnect polling timeout reached')
             clearInterval(pollInterval)
           }
         }, 500)
@@ -380,12 +405,23 @@ export function WalletProvider({ children }: { children: ReactNode }) {
         // Now call enable
         console.log('Calling WalletConnect enable()')
         wcProvider.enable().then(() => {
-          console.log('WalletConnect enable() resolved, session:', wcProvider.session, 'accounts:', wcProvider.accounts)
+          console.log('WalletConnect enable() resolved immediately')
+          console.log('Session state:', {
+            hasSession: !!wcProvider.session,
+            sessionKeys: wcProvider.session ? Object.keys(wcProvider.session) : null,
+            accounts: wcProvider.accounts,
+            accountsLength: wcProvider.accounts.length
+          })
+          
           // Check again after enable resolves
           if (wcProvider.session && wcProvider.accounts.length > 0) {
+            console.log('Already connected after enable()')
             clearInterval(pollInterval)
             cleanup()
             resolve()
+          } else {
+            console.log('Not connected yet, waiting for session...')
+            // Don't resolve yet, let the polling/events handle it
           }
         }).catch((error) => {
           console.error('WalletConnect enable() error:', error)
