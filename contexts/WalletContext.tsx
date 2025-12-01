@@ -289,12 +289,20 @@ export function WalletProvider({ children }: { children: ReactNode }) {
         const timeout = setTimeout(() => {
           console.log('WalletConnect timeout - session:', wcProvider.session, 'accounts:', wcProvider.accounts)
           reject(new Error('Connection timeout. Please try again and approve the connection in your wallet.'))
-        }, 30000) // 30 second timeout
+        }, 60000) // 60 second timeout (longer for mobile app switching)
+
+        const cleanup = () => {
+          clearTimeout(timeout)
+          window.removeEventListener('focus', checkOnFocus)
+          wcProvider.off('connect', handleConnect)
+          wcProvider.off('session_connect', handleConnect)
+          wcProvider.off('accountsChanged', handleAccountsChanged)
+        }
 
         // Listen for session connect event
         const handleConnect = () => {
           console.log('WalletConnect connect event fired')
-          clearTimeout(timeout)
+          cleanup()
           // Give it a moment for accounts to populate
           setTimeout(() => {
             resolve()
@@ -304,7 +312,7 @@ export function WalletProvider({ children }: { children: ReactNode }) {
         // Check if already connected
         if (wcProvider.session && wcProvider.accounts.length > 0) {
           console.log('WalletConnect already connected')
-          clearTimeout(timeout)
+          cleanup()
           resolve()
           return
         }
@@ -317,14 +325,44 @@ export function WalletProvider({ children }: { children: ReactNode }) {
         const handleAccountsChanged = (accounts: string[]) => {
           console.log('WalletConnect accountsChanged event:', accounts)
           if (accounts.length > 0) {
-            clearTimeout(timeout)
-            wcProvider.off('connect', handleConnect)
-            wcProvider.off('session_connect', handleConnect)
-            wcProvider.off('accountsChanged', handleAccountsChanged)
+            cleanup()
             resolve()
           }
         }
         wcProvider.on('accountsChanged', handleAccountsChanged)
+
+        // Check when user returns from MetaMask app (page regains focus)
+        const checkOnFocus = () => {
+          console.log('Page regained focus, checking WalletConnect session')
+          setTimeout(() => {
+            if (wcProvider.session && wcProvider.accounts.length > 0) {
+              console.log('WalletConnect connected after returning from app')
+              cleanup()
+              resolve()
+            } else {
+              console.log('Still no session after focus:', {
+                hasSession: !!wcProvider.session,
+                accounts: wcProvider.accounts.length
+              })
+            }
+          }, 1000) // Wait a bit for the session to sync
+        }
+        window.addEventListener('focus', checkOnFocus)
+
+        // Also poll periodically as a fallback (especially for mobile)
+        let pollCount = 0
+        const maxPolls = 120 // 60 seconds with 500ms intervals
+        const pollInterval = setInterval(() => {
+          pollCount++
+          if (wcProvider.session && wcProvider.accounts.length > 0) {
+            console.log('WalletConnect connected via polling')
+            clearInterval(pollInterval)
+            cleanup()
+            resolve()
+          } else if (pollCount >= maxPolls) {
+            clearInterval(pollInterval)
+          }
+        }, 500)
 
         // Log all available events
         console.log('WalletConnect provider events:', Object.keys(wcProvider))
@@ -335,18 +373,14 @@ export function WalletProvider({ children }: { children: ReactNode }) {
           console.log('WalletConnect enable() resolved, session:', wcProvider.session, 'accounts:', wcProvider.accounts)
           // Check again after enable resolves
           if (wcProvider.session && wcProvider.accounts.length > 0) {
-            clearTimeout(timeout)
-            wcProvider.off('connect', handleConnect)
-            wcProvider.off('session_connect', handleConnect)
-            wcProvider.off('accountsChanged', handleAccountsChanged)
+            clearInterval(pollInterval)
+            cleanup()
             resolve()
           }
         }).catch((error) => {
           console.error('WalletConnect enable() error:', error)
-          clearTimeout(timeout)
-          wcProvider.off('connect', handleConnect)
-          wcProvider.off('session_connect', handleConnect)
-          wcProvider.off('accountsChanged', handleAccountsChanged)
+          clearInterval(pollInterval)
+          cleanup()
           reject(error)
         })
       })
