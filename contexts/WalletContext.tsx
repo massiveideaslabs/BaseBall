@@ -2,6 +2,7 @@
 
 import { createContext, useContext, useState, useEffect, ReactNode } from 'react'
 import { ethers } from 'ethers'
+import { EthereumProvider } from '@walletconnect/ethereum-provider'
 
 const BASE_SEPOLIA_CHAIN_ID = 84532
 const BASE_SEPOLIA_CHAIN_ID_HEX = '0x14A34'
@@ -40,6 +41,7 @@ interface WalletContextType {
   signer: ethers.JsonRpcSigner | null
   connectMetaMask: () => Promise<void>
   connectPhantom: () => Promise<void>
+  connectWalletConnect: () => Promise<void>
   disconnectWallet: () => void
   isConnected: boolean
   isCorrectNetwork: boolean
@@ -53,6 +55,7 @@ export function WalletProvider({ children }: { children: ReactNode }) {
   const [provider, setProvider] = useState<ethers.BrowserProvider | null>(null)
   const [signer, setSigner] = useState<ethers.JsonRpcSigner | null>(null)
   const [isCorrectNetwork, setIsCorrectNetwork] = useState(true)
+  const [walletConnectProvider, setWalletConnectProvider] = useState<EthereumProvider | null>(null)
 
   useEffect(() => {
     checkConnection()
@@ -207,7 +210,89 @@ export function WalletProvider({ children }: { children: ReactNode }) {
     }
   }
 
-  const disconnectWallet = () => {
+  const connectWalletConnect = async () => {
+    if (typeof window === 'undefined') return
+
+    const projectId = process.env.NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID
+    if (!projectId || projectId === 'YOUR_PROJECT_ID') {
+      alert(
+        'WalletConnect Project ID not configured.\n\n' +
+        'To use WalletConnect:\n' +
+        '1. Go to https://cloud.walletconnect.com and create a free account\n' +
+        '2. Create a new project and copy your Project ID\n' +
+        '3. Add NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID=your_project_id to your .env file\n' +
+        '4. Redeploy your application\n\n' +
+        'For now, please use MetaMask or Phantom.'
+      )
+      return
+    }
+
+    try {
+      // Initialize WalletConnect provider
+      const wcProvider = await EthereumProvider.init({
+        projectId,
+        chains: [BASE_SEPOLIA_CHAIN_ID],
+        optionalChains: [],
+        showQrModal: true,
+        metadata: {
+          name: 'Base Ball',
+          description: 'Multiplayer blockchain-based Pong game on Base chain',
+          url: typeof window !== 'undefined' ? window.location.origin : '',
+          icons: [`${typeof window !== 'undefined' ? window.location.origin : ''}/favicon.ico`],
+        },
+      })
+
+      // Enable session
+      await wcProvider.enable()
+
+      // Get accounts
+      const accounts = wcProvider.accounts
+      if (accounts.length === 0) {
+        throw new Error('No accounts found')
+      }
+
+      // Create ethers provider from WalletConnect provider
+      const browserProvider = new ethers.BrowserProvider(wcProvider as any)
+      
+      // Check network
+      const networkOk = await ensureCorrectNetwork(browserProvider)
+      if (!networkOk) {
+        await wcProvider.disconnect()
+        return
+      }
+
+      const signer = await browserProvider.getSigner()
+      const address = await signer.getAddress()
+
+      setWalletConnectProvider(wcProvider)
+      setProvider(browserProvider)
+      setSigner(signer)
+      setAccount(address)
+
+      // Listen for disconnect
+      wcProvider.on('disconnect', () => {
+        disconnectWallet()
+      })
+    } catch (error: any) {
+      console.error('WalletConnect connection error:', error)
+      if (error?.message?.includes('User rejected')) {
+        return // User cancelled, don't show error
+      }
+      alert('Failed to connect via WalletConnect. Please try again.')
+    }
+  }
+
+  const disconnectWallet = async () => {
+    // Disconnect WalletConnect if connected
+    if (walletConnectProvider) {
+      try {
+        await walletConnectProvider.disconnect()
+      } catch (error) {
+        console.error('Error disconnecting WalletConnect:', error)
+      }
+      setWalletConnectProvider(null)
+    }
+    
     setAccount(null)
     setProvider(null)
     setSigner(null)
@@ -222,6 +307,7 @@ export function WalletProvider({ children }: { children: ReactNode }) {
         signer,
         connectMetaMask,
         connectPhantom,
+        connectWalletConnect,
         disconnectWallet,
         isConnected: !!account,
         isCorrectNetwork,
