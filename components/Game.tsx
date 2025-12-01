@@ -569,7 +569,7 @@ export default function Game({ gameId, practiceMode = false, onExit }: GameProps
         />
       </div>
       <div className="mt-4 text-center text-sm text-retro-cyan">
-        <p>Use mouse or arrow keys (↑↓) to move your paddle</p>
+        <p>Use mouse, touch, or arrow keys (↑↓) to move your paddle</p>
         <p className="mt-2 text-retro-yellow">First to 10 points wins!</p>
       </div>
     </div>
