@@ -4,6 +4,8 @@ import { createContext, useContext, useState, useEffect, ReactNode } from 'react
 import { ethers } from 'ethers'
 import { EthereumProvider } from '@walletconnect/ethereum-provider'
 
+type EthereumProviderType = InstanceType<typeof EthereumProvider>
+
 const BASE_SEPOLIA_CHAIN_ID = 84532
 const BASE_SEPOLIA_CHAIN_ID_HEX = '0x14A34'
 const BASE_SEPOLIA_PARAMS = {
@@ -55,7 +57,7 @@ export function WalletProvider({ children }: { children: ReactNode }) {
   const [provider, setProvider] = useState<ethers.BrowserProvider | null>(null)
   const [signer, setSigner] = useState<ethers.JsonRpcSigner | null>(null)
   const [isCorrectNetwork, setIsCorrectNetwork] = useState(true)
-  const [walletConnectProvider, setWalletConnectProvider] = useState<EthereumProvider | null>(null)
+  const [walletConnectProvider, setWalletConnectProvider] = useState<EthereumProviderType | null>(null)
 
   useEffect(() => {
     checkConnection()
