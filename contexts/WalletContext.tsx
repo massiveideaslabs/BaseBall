@@ -284,21 +284,63 @@ export function WalletProvider({ children }: { children: ReactNode }) {
       }
 
       // Enable session - this will show the QR modal
-      await wcProvider.enable()
+      // Use a promise that resolves when the session is connected
+      await new Promise<void>((resolve, reject) => {
+        const timeout = setTimeout(() => {
+          reject(new Error('Connection timeout. Please try again and approve the connection in your wallet.'))
+        }, 30000) // 30 second timeout
 
-      // Wait for session to be established by polling for accounts
-      // This ensures we wait for user approval
-      let attempts = 0
-      const maxAttempts = 60 // 30 seconds max wait
-      while (wcProvider.accounts.length === 0 && attempts < maxAttempts) {
-        await new Promise(resolve => setTimeout(resolve, 500))
-        attempts++
-      }
+        // Listen for session connect event
+        const handleConnect = () => {
+          clearTimeout(timeout)
+          // Give it a moment for accounts to populate
+          setTimeout(() => {
+            resolve()
+          }, 500)
+        }
 
-      // Get accounts after waiting
-      const accounts = wcProvider.accounts
+        // Check if already connected
+        if (wcProvider.session && wcProvider.accounts.length > 0) {
+          clearTimeout(timeout)
+          resolve()
+          return
+        }
+
+        // Set up event listeners
+        wcProvider.on('connect', handleConnect)
+        wcProvider.on('session_connect', handleConnect)
+        
+        // Also listen for accountsChanged as a backup
+        const handleAccountsChanged = (accounts: string[]) => {
+          if (accounts.length > 0) {
+            clearTimeout(timeout)
+            wcProvider.off('connect', handleConnect)
+            wcProvider.off('session_connect', handleConnect)
+            wcProvider.off('accountsChanged', handleAccountsChanged)
+            resolve()
+          }
+        }
+        wcProvider.on('accountsChanged', handleAccountsChanged)
+
+        // Now call enable
+        wcProvider.enable().catch((error) => {
+          clearTimeout(timeout)
+          wcProvider.off('connect', handleConnect)
+          wcProvider.off('session_connect', handleConnect)
+          wcProvider.off('accountsChanged', handleAccountsChanged)
+          reject(error)
+        })
+      })
+
+      // Get accounts after connection is established
+      const accounts = wcProvider.accounts || []
       if (accounts.length === 0) {
-        throw new Error('Connection timeout. Please try again and approve the connection in your wallet.')
+        // Try one more time after a short delay
+        await new Promise(resolve => setTimeout(resolve, 1000))
+        const finalAccounts = wcProvider.accounts || []
+        if (finalAccounts.length === 0) {
+          throw new Error('No accounts found. Please make sure you approved the connection in your wallet.')
+        }
       }
 
       // Create ethers provider from WalletConnect provider
