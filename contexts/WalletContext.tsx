@@ -215,15 +215,21 @@ export function WalletProvider({ children }: { children: ReactNode }) {
   const connectWalletConnect = async () => {
     if (typeof window === 'undefined') return
 
-    const projectId = process.env.NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID
-    if (!projectId || projectId === 'YOUR_PROJECT_ID') {
+    const projectId = process.env.NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID?.trim()
+    
+    // Debug: log the project ID (first few chars only for security)
+    console.log('WalletConnect Project ID check:', projectId ? `${projectId.substring(0, 8)}...` : 'NOT FOUND')
+    
+    if (!projectId || projectId === 'YOUR_PROJECT_ID' || projectId === '') {
       alert(
         'WalletConnect Project ID not configured.\n\n' +
         'To use WalletConnect:\n' +
         '1. Go to https://cloud.walletconnect.com and create a free account\n' +
         '2. Create a new project and copy your Project ID\n' +
         '3. Add NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID=your_project_id to your .env file\n' +
-        '4. Redeploy your application\n\n' +
+        '4. Add the same variable in Vercel: Settings → Environment Variables\n' +
+        '5. Redeploy your application (Vercel auto-redeploys after env var changes)\n\n' +
+        'Current value: ' + (projectId || 'undefined') + '\n\n' +
         'For now, please use MetaMask or Phantom.'
       )
       return
