@@ -212,8 +212,27 @@ export function WalletProvider({ children }: { children: ReactNode }) {
     }
   }
 
+  const isMobileDevice = () => {
+    if (typeof window === 'undefined') return false
+    return /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent)
+  }
+
   const connectWalletConnect = async () => {
     if (typeof window === 'undefined') return
+
+    // On mobile, recommend using direct MetaMask connection instead
+    // WalletConnect has known issues with MetaMask mobile approval prompts
+    if (isMobileDevice()) {
+      const useDirect = confirm(
+        'WalletConnect on mobile has known issues with MetaMask.\n\n' +
+        'Would you like to use direct MetaMask connection instead?\n\n' +
+        'Click OK to use MetaMask directly, or Cancel to try WalletConnect anyway.'
+      )
+      if (useDirect) {
+        await connectMetaMask()
+        return
+      }
+    }
 
     const projectId = process.env.NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID?.trim()
     
