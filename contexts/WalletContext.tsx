@@ -287,11 +287,13 @@ export function WalletProvider({ children }: { children: ReactNode }) {
       // Use a promise that resolves when the session is connected
       await new Promise<void>((resolve, reject) => {
         const timeout = setTimeout(() => {
+          console.log('WalletConnect timeout - session:', wcProvider.session, 'accounts:', wcProvider.accounts)
           reject(new Error('Connection timeout. Please try again and approve the connection in your wallet.'))
         }, 30000) // 30 second timeout
 
         // Listen for session connect event
         const handleConnect = () => {
+          console.log('WalletConnect connect event fired')
           clearTimeout(timeout)
           // Give it a moment for accounts to populate
           setTimeout(() => {
@@ -301,6 +303,7 @@ export function WalletProvider({ children }: { children: ReactNode }) {
 
         // Check if already connected
         if (wcProvider.session && wcProvider.accounts.length > 0) {
+          console.log('WalletConnect already connected')
           clearTimeout(timeout)
           resolve()
           return
@@ -312,6 +315,7 @@ export function WalletProvider({ children }: { children: ReactNode }) {
         
         // Also listen for accountsChanged as a backup
         const handleAccountsChanged = (accounts: string[]) => {
+          console.log('WalletConnect accountsChanged event:', accounts)
           if (accounts.length > 0) {
             clearTimeout(timeout)
             wcProvider.off('connect', handleConnect)
@@ -322,8 +326,23 @@ export function WalletProvider({ children }: { children: ReactNode }) {
         }
         wcProvider.on('accountsChanged', handleAccountsChanged)
 
+        // Log all available events
+        console.log('WalletConnect provider events:', Object.keys(wcProvider))
+
         // Now call enable
-        wcProvider.enable().catch((error) => {
+        console.log('Calling WalletConnect enable()')
+        wcProvider.enable().then(() => {
+          console.log('WalletConnect enable() resolved, session:', wcProvider.session, 'accounts:', wcProvider.accounts)
+          // Check again after enable resolves
+          if (wcProvider.session && wcProvider.accounts.length > 0) {
+            clearTimeout(timeout)
+            wcProvider.off('connect', handleConnect)
+            wcProvider.off('session_connect', handleConnect)
+            wcProvider.off('accountsChanged', handleAccountsChanged)
+            resolve()
+          }
+        }).catch((error) => {
+          console.error('WalletConnect enable() error:', error)
           clearTimeout(timeout)
           wcProvider.off('connect', handleConnect)
           wcProvider.off('session_connect', handleConnect)
