@@ -91,7 +91,7 @@ export default function Home() {
                             }}
                             className={`w-full text-left px-4 py-4 pixel-button transition ${
                               currentView === 'lobby' 
-                                ? 'bg-retro-green text-retro-bg' 
+                                ? 'bg-retro-green' 
                                 : ''
                             }`}
                             style={{
@@ -107,7 +107,7 @@ export default function Home() {
                             }}
                             className={`w-full text-left px-4 py-4 pixel-button transition ${
                               currentView === 'leaderboard' 
-                                ? 'bg-retro-green text-retro-bg' 
+                                ? 'bg-retro-green' 
                                 : ''
                             }`}
                             style={{
