@@ -34,14 +34,18 @@ git push -u origin main
 2. Click "New Project" → "Deploy from GitHub repo"
 3. Select your repository
 4. **Important:** Click "Add Service" → "Empty Service"
-5. In the service settings:
-   - **Root Directory:** Set to `server`
-   - **Start Command:** `npm start`
+5. In the service settings (click on the service, then "Settings"):
+   - **Root Directory:** Set to `server` (this is critical!)
+   - **Start Command:** Leave empty (will use `npm start` from package.json)
 6. Go to "Variables" tab and add:
    - `CLIENT_URL` = `https://your-frontend-url.vercel.app` (we'll update this after frontend deploys)
    - `PORT` = `3001` (optional, defaults to 3001)
-7. Click "Deploy"
-8. Once deployed, copy the **public URL** (e.g., `https://your-app.railway.app`)
+   - `NODE_ENV` = `production` (optional)
+7. Click "Deploy" or Railway will auto-deploy
+8. Once deployed, go to "Settings" → "Generate Domain" to get a public URL
+9. Copy the **public URL** (e.g., `https://your-app.railway.app`)
+
+**Important:** Make sure the Root Directory is set to `server` - this tells Railway to only look at the server folder, not the root!
 
 ### Option B: Render (Alternative)
 
