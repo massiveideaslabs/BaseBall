@@ -2,8 +2,8 @@
 nixPkgs = ["nodejs-18_x"]
 
 [phases.install]
-cmds = ["npm install"]
+cmds = ["cd server && npm install"]
 
 [start]
-cmd = "npm start"
+cmd = "cd server && npm start"
 
