@@ -95,7 +95,7 @@ export default function Home() {
                                 : ''
                             }`}
                             style={{
-                              color: currentView === 'lobby' ? '#0a0a0a' : '#00ff00',
+                              color: '#00ff00',
                             }}
                           >
                             LOBBY
@@ -111,7 +111,7 @@ export default function Home() {
                                 : ''
                             }`}
                             style={{
-                              color: currentView === 'leaderboard' ? '#0a0a0a' : '#00ff00',
+                              color: '#00ff00',
                             }}
                           >
                             LEADERBOARD
