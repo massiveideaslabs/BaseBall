@@ -82,6 +82,15 @@ export default function Game({ gameId, practiceMode = false, onExit }: GameProps
         mouseYRef.current = e.clientY - rect.top
       }
 
+      const handleTouchMove = (e: TouchEvent) => {
+        e.preventDefault()
+        const rect = canvas.getBoundingClientRect()
+        const touch = e.touches[0]
+        if (touch) {
+          mouseYRef.current = touch.clientY - rect.top
+        }
+      }
+
       const handleKeyDown = (e: KeyboardEvent) => {
         if (e.key === 'ArrowUp') keysRef.current.up = true
         if (e.key === 'ArrowDown') keysRef.current.down = true
@@ -93,11 +102,15 @@ export default function Game({ gameId, practiceMode = false, onExit }: GameProps
       }
 
       canvas.addEventListener('mousemove', handleMouseMove)
+      canvas.addEventListener('touchmove', handleTouchMove, { passive: false })
+      canvas.addEventListener('touchstart', handleTouchMove, { passive: false })
       window.addEventListener('keydown', handleKeyDown)
       window.addEventListener('keyup', handleKeyUp)
 
       return () => {
         canvas.removeEventListener('mousemove', handleMouseMove)
+        canvas.removeEventListener('touchmove', handleTouchMove)
+        canvas.removeEventListener('touchstart', handleTouchMove)
         window.removeEventListener('keydown', handleKeyDown)
         window.removeEventListener('keyup', handleKeyUp)
       }
