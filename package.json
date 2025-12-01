@@ -9,7 +9,8 @@
     "lint": "next lint",
     "compile": "hardhat compile",
     "test": "hardhat test",
-    "deploy:base": "hardhat run scripts/deploy.ts --network base"
+    "deploy:base": "hardhat run scripts/deploy.ts --network base",
+    "server": "cd server && npm start"
   },
   "dependencies": {
     "@solana/wallet-adapter-base": "^0.9.23",
