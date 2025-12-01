@@ -26,7 +26,6 @@ export default function RootLayout({
           backgroundColor: '#0a0a0a',
           color: '#00ff00',
           fontFamily: '"Press Start 2P", "Courier New", monospace',
-          fontDisplay: 'block',
         }}
       >
         {children}
