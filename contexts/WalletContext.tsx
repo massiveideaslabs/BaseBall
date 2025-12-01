@@ -250,6 +250,16 @@ export function WalletProvider({ children }: { children: ReactNode }) {
         },
       })
 
+      // Listen for session_delete event (when request is reset/cancelled)
+      wcProvider.on('session_delete', (error: any) => {
+        console.log('WalletConnect session deleted/reset:', error)
+      })
+
+      // Listen for display_uri event to see the connection URI
+      wcProvider.on('display_uri', (uri: string) => {
+        console.log('WalletConnect URI:', uri)
+      })
+
       // Check if already connected
       if (wcProvider.session) {
         // Already have a session, use it
@@ -429,13 +439,26 @@ export function WalletProvider({ children }: { children: ReactNode }) {
       })
     } catch (error: any) {
       console.error('WalletConnect connection error:', error)
-      if (error?.message?.includes('User rejected') || error?.message?.includes('rejected')) {
+      const errorMessage = error?.message || ''
+      
+      if (errorMessage.includes('User rejected') || errorMessage.includes('rejected')) {
         return // User cancelled, don't show error
       }
-      if (error?.message?.includes('No accounts found')) {
+      
+      if (errorMessage.includes('Connection request reset') || errorMessage.includes('reset')) {
+        alert('Connection was cancelled. Please try again and make sure to approve the connection in your wallet without closing the app.')
+        return
+      }
+      
+      if (errorMessage.includes('timeout')) {
+        alert('Connection timed out. Please try again and approve the connection quickly in your wallet.')
+        return
+      }
+      
+      if (errorMessage.includes('No accounts found')) {
         alert('Connection was not approved. Please try again and approve the connection in your wallet.')
       } else {
-        alert(`Failed to connect via WalletConnect: ${error?.message || 'Unknown error'}`)
+        alert(`Failed to connect via WalletConnect: ${errorMessage || 'Unknown error'}. Please try again.`)
       }
     }
   }
