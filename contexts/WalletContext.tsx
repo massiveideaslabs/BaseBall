@@ -121,6 +121,11 @@ export function WalletProvider({ children }: { children: ReactNode }) {
     }
   }
 
+  const isMobile = () => {
+    if (typeof window === 'undefined') return false
+    return /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent)
+  }
+
   const connectMetaMask = async () => {
     if (typeof window === 'undefined') return
     const anyWindow = window as any
@@ -135,8 +140,27 @@ export function WalletProvider({ children }: { children: ReactNode }) {
     }
 
     if (!mmProvider) {
-      alert('MetaMask not detected. Please install MetaMask to use this option.')
-      return
+      // On mobile, try to open MetaMask app
+      if (isMobile()) {
+        const currentUrl = window.location.href
+        // Try MetaMask deep link
+        const metamaskUrl = `https://metamask.app.link/dapp/${encodeURIComponent(currentUrl)}`
+        const userConfirmed = confirm(
+          'MetaMask not detected in browser. Would you like to open the MetaMask app?\n\n' +
+          'If you have MetaMask installed, click OK to open it. Otherwise, please install MetaMask from the App Store or Google Play.'
+        )
+        if (userConfirmed) {
+          window.location.href = metamaskUrl
+          // Fallback: try direct deep link
+          setTimeout(() => {
+            window.location.href = 'metamask://'
+          }, 500)
+        }
+        return
+      } else {
+        alert('MetaMask not detected. Please install MetaMask extension to use this option.')
+        return
+      }
     }
 
     try {

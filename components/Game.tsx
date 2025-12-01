@@ -572,14 +572,16 @@ export default function Game({ gameId, practiceMode = false, onExit }: GameProps
           </div>
         )}
       </div>
-      <div className="pixel-border p-4 bg-retro-bg">
-        <canvas
-          ref={canvasRef}
-          width={CANVAS_WIDTH}
-          height={CANVAS_HEIGHT}
-          className="w-full"
-          style={{ imageRendering: 'pixelated' }}
-        />
+      <div className="pixel-border p-4 bg-retro-bg flex justify-center">
+        <div className="w-full max-w-full" style={{ aspectRatio: `${CANVAS_WIDTH}/${CANVAS_HEIGHT}` }}>
+          <canvas
+            ref={canvasRef}
+            width={CANVAS_WIDTH}
+            height={CANVAS_HEIGHT}
+            className="w-full h-full"
+            style={{ imageRendering: 'pixelated', maxWidth: '100%', maxHeight: '100%' }}
+          />
+        </div>
       </div>
       <div className="mt-4 text-center text-sm text-retro-cyan">
         <p>Use mouse, touch, or arrow keys (↑↓) to move your paddle</p>
