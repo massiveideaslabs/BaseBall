@@ -572,14 +572,24 @@ export default function Game({ gameId, practiceMode = false, onExit }: GameProps
           </div>
         )}
       </div>
-      <div className="pixel-border p-4 bg-retro-bg flex justify-center">
-        <div className="w-full max-w-full" style={{ aspectRatio: `${CANVAS_WIDTH}/${CANVAS_HEIGHT}` }}>
+      <div className="pixel-border p-2 sm:p-4 bg-retro-bg flex justify-center items-center overflow-hidden">
+        <div 
+          className="w-full relative"
+          style={{ 
+            paddingBottom: `${(CANVAS_HEIGHT / CANVAS_WIDTH) * 100}%`, // Maintain aspect ratio
+            maxHeight: '70vh',
+            maxWidth: '100%'
+          }}
+        >
           <canvas
             ref={canvasRef}
             width={CANVAS_WIDTH}
             height={CANVAS_HEIGHT}
-            className="w-full h-full"
-            style={{ imageRendering: 'pixelated', maxWidth: '100%', maxHeight: '100%' }}
+            className="absolute top-0 left-0 w-full h-full"
+            style={{ 
+              imageRendering: 'pixelated',
+              objectFit: 'contain'
+            }}
           />
         </div>
       </div>

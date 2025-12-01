@@ -242,13 +242,17 @@ export function WalletProvider({ children }: { children: ReactNode }) {
         },
       })
 
-      // Enable session
+      // Enable session - this will show the QR modal
+      // The modal will appear automatically when enable() is called
       await wcProvider.enable()
+
+      // Wait a bit for the connection to be established
+      await new Promise(resolve => setTimeout(resolve, 500))
 
       // Get accounts
       const accounts = wcProvider.accounts
       if (accounts.length === 0) {
-        throw new Error('No accounts found')
+        throw new Error('No accounts found. Please approve the connection in your wallet.')
       }
 
       // Create ethers provider from WalletConnect provider
@@ -273,12 +277,25 @@ export function WalletProvider({ children }: { children: ReactNode }) {
       wcProvider.on('disconnect', () => {
         disconnectWallet()
       })
+
+      // Listen for account changes
+      wcProvider.on('accountsChanged', (accounts: string[]) => {
+        if (accounts.length > 0) {
+          setAccount(accounts[0])
+        } else {
+          disconnectWallet()
+        }
+      })
     } catch (error: any) {
       console.error('WalletConnect connection error:', error)
-      if (error?.message?.includes('User rejected')) {
+      if (error?.message?.includes('User rejected') || error?.message?.includes('rejected')) {
         return // User cancelled, don't show error
       }
-      alert('Failed to connect via WalletConnect. Please try again.')
+      if (error?.message?.includes('No accounts found')) {
+        alert('Connection was not approved. Please try again and approve the connection in your wallet.')
+      } else {
+        alert(`Failed to connect via WalletConnect: ${error?.message || 'Unknown error'}`)
+      }
     }
   }
 
