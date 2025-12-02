@@ -81,14 +81,14 @@ export default function Game({ gameId, practiceMode = false, onExit }: GameProps
             retriesLeft: retries 
           })
           data = await getGame(provider, gameId)
-          logger.info('Game', 'Game data received', { 
-            gameId,
-            status: data.status,
-            host: data.host,
-            player: data.player,
-            wager: data.wager?.toString(),
-            difficulty: data.difficulty
-          })
+        logger.info('Game', 'Game data received', { 
+          gameId,
+          status: Number(data.status),
+          host: data.host,
+          player: data.player,
+          wager: data.wager?.toString(),
+          difficulty: Number(data.difficulty)
+        })
           break // Success, exit retry loop
         } catch (error: any) {
           logger.error('Game', 'Error loading game', error)
