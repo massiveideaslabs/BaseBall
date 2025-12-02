@@ -278,8 +278,11 @@ function HomeContent() {
                 setSelectedGameId(gameId)
                 setCurrentView('game')
               }}
-              onCreateGame={() => {
-                logger.info('Page', 'Creating new game')
+              onCreateGame={(gameId?: number) => {
+                logger.info('Page', 'Creating new game', { gameId })
+                if (gameId) {
+                  setSelectedGameId(gameId)
+                }
                 setCurrentView('game')
               }}
               onPracticeMode={() => {
@@ -319,6 +322,7 @@ export default function Home() {
     </WalletProvider>
   )
 }
+
 
 
 

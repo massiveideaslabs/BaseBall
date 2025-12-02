@@ -142,16 +142,30 @@ export default function Lobby({ onJoinGame, onCreateGame, onPracticeMode }: Lobb
         expirationHours
       })
       const expirationSeconds = expirationHours * 60 * 60
-      const tx = await createGame(signer, difficulty, wager, expirationSeconds)
+      const result = await createGame(signer, difficulty, wager, expirationSeconds)
       logger.info('Lobby', 'Game created successfully', {
-        txHash: tx.hash
+        txHash: result.tx.hash,
+        gameId: result.gameId
       })
       setShowCreateModal(false)
       // Emit socket event for real-time update
       if (socketRef.current) {
         socketRef.current.emit('game-created')
       }
-      await loadGames()
+      
+      // Wait a moment for blockchain state to sync
+      await new Promise(resolve => setTimeout(resolve, 1000))
+      
+      // If we have the gameId, navigate to it, otherwise reload games
+      if (result.gameId !== null) {
+        logger.info('Lobby', 'Navigating to created game', { gameId: result.gameId })
+        // Wait a bit more and then navigate
+        await new Promise(resolve => setTimeout(resolve, 1000))
+        onCreateGame(result.gameId)
+      } else {
+        // Fallback: reload games and let user navigate manually
+        await loadGames()
+      }
     } catch (error: any) {
       logger.error('Lobby', 'Error creating game', error)
       console.error('Error creating game:', error)

@@ -90,8 +90,35 @@ export async function createGame(
     }
     
     const tx = await contract.createGame(difficulty, expirationDurationSeconds, txOptions)
-    await tx.wait()
-    return tx
+    const receipt = await tx.wait()
+    
+    // Extract gameId from the GameCreated event
+    let gameId: number | null = null
+    if (receipt?.logs) {
+      const eventInterface = contract.interface
+      for (const log of receipt.logs) {
+        try {
+          const parsedLog = eventInterface.parseLog(log)
+          if (parsedLog && parsedLog.name === 'GameCreated') {
+            gameId = Number(parsedLog.args.gameId)
+            console.log('Game created with ID:', gameId)
+            break
+          }
+        } catch {
+          // Not the event we're looking for, continue
+        }
+      }
+    }
+    
+    // If we couldn't find the event, try to get it from the return value
+    if (gameId === null && receipt) {
+      // The transaction receipt might have the return value
+      // But since createGame returns a value, we need to decode it
+      // For now, we'll query the gameCounter or use getAllPendingGames to find the latest
+      console.warn('Could not extract gameId from events, will need to query for it')
+    }
+    
+    return { tx, gameId }
   } catch (error: any) {
     console.error('Error in createGame:', error)
     
