@@ -212,7 +212,13 @@ export default function DebugPanel() {
                   <details className="mt-1">
                     <summary className="text-retro-yellow cursor-pointer">Data</summary>
                     <pre className="text-xs mt-1 overflow-x-auto text-retro-cyan">
-                      {JSON.stringify(log.data, null, 2)}
+                      {(() => {
+                        try {
+                          return JSON.stringify(log.data, null, 2)
+                        } catch (error) {
+                          return String(log.data)
+                        }
+                      })()}
                     </pre>
                   </details>
                 )}

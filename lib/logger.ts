@@ -53,12 +53,45 @@ class Logger {
       return obj
     }
 
+    // Convert data safely, handling any BigInt values
+    let convertedData: any = undefined
+    if (data) {
+      try {
+        const converted = convertBigInt(data)
+        // Double-check: ensure no BigInt values remain
+        convertedData = JSON.parse(JSON.stringify(converted, (key, value) => {
+          if (typeof value === 'bigint') {
+            return value.toString()
+          }
+          return value
+        }))
+      } catch (error) {
+        // If conversion fails, try to stringify with a fallback
+        console.warn('[Logger] Failed to convert data for logging:', error)
+        try {
+          convertedData = JSON.parse(JSON.stringify(data, (key, value) => {
+            if (typeof value === 'bigint') {
+              return value.toString()
+            }
+            if (value && typeof value === 'object' && value.constructor === Object) {
+              // Handle plain objects
+              return value
+            }
+            return value
+          }))
+        } catch (e) {
+          // Last resort: convert to string representation
+          convertedData = { _error: 'Failed to serialize data', _raw: String(data) }
+        }
+      }
+    }
+
     const entry: LogEntry = {
       timestamp: new Date().toISOString(),
       level,
       component,
       message,
-      data: data ? JSON.parse(JSON.stringify(convertBigInt(data))) : undefined,
+      data: convertedData,
       stack: level === 'error' && data?.stack ? data.stack : undefined
     }
 
@@ -74,10 +107,19 @@ class Logger {
     const prefix = `[${entry.timestamp}] [${component}]`
     
     if (data) {
+      // Convert data for console output to avoid BigInt issues
+      let consoleData = data
+      try {
+        consoleData = convertBigInt(data)
+      } catch (error) {
+        // If conversion fails, use string representation
+        consoleData = { _conversionError: String(error), _raw: String(data) }
+      }
+      
       console[level === 'error' ? 'error' : level === 'warn' ? 'warn' : 'log'](
         `%c${prefix} ${message}`,
         style,
-        data
+        consoleData
       )
     } else {
       console[level === 'error' ? 'error' : level === 'warn' ? 'warn' : 'log'](

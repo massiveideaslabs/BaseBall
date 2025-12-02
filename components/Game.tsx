@@ -178,12 +178,17 @@ export default function Game({ gameId, practiceMode = false, onExit }: GameProps
           // Both players must be present (hasPlayer = true) before starting
           if (hasPlayer) {
             // Both players are present - start the game
+            // Convert difficulty from BigInt to number if needed
+            const difficultyNumber = typeof data.difficulty === 'bigint' 
+              ? Number(data.difficulty) 
+              : Number(data.difficulty)
+            
             logger.info('Game', 'Both players present - initializing game', {
               gameId,
-              difficulty: data.difficulty,
+              difficulty: difficultyNumber,
               role: isHost ? 'host' : 'player'
             })
-            initializeGame(data.difficulty)
+            initializeGame(difficultyNumber)
           } else {
             // Player hasn't joined yet - show waiting message
             logger.info('Game', 'Waiting for other player to join', { 
@@ -576,7 +581,9 @@ export default function Game({ gameId, practiceMode = false, onExit }: GameProps
     setTouchCount((prev) => {
       const newCount = prev + 1
       if (newCount >= 10) {
-        const difficulty = practiceMode ? practiceDifficulty : (gameData?.difficulty || 5)
+        const difficulty = practiceMode 
+          ? practiceDifficulty 
+          : (gameData?.difficulty ? Number(gameData.difficulty) : 5)
         const speedIncrease = 0.2 + (difficulty * 0.05)
         ballRef.current.speed += speedIncrease
         const currentSpeed = Math.sqrt(ballRef.current.dx ** 2 + ballRef.current.dy ** 2)
@@ -590,7 +597,9 @@ export default function Game({ gameId, practiceMode = false, onExit }: GameProps
   }
 
   const resetBall = () => {
-    const difficulty = practiceMode ? practiceDifficulty : (gameData?.difficulty || 5)
+    const difficulty = practiceMode 
+      ? practiceDifficulty 
+      : (gameData?.difficulty ? Number(gameData.difficulty) : 5)
     const baseSpeed = 2 + (difficulty * 0.5)
     const angle = (Math.random() * Math.PI / 3) - Math.PI / 6
     ballRef.current = {
