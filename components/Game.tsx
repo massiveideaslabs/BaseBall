@@ -142,10 +142,30 @@ export default function Game({ gameId, practiceMode = false, onExit }: GameProps
       
       if (!data) {
         // All retries failed
-        logger.error('Game', 'Failed to load game after all retries', { gameId })
-        setGameData(null)
-        setLoading(false)
-        return
+        logger.error('Game', 'Failed to load game after all retries', { 
+          gameId,
+          account,
+          hasProvider: !!provider
+        })
+        // Try one final check to see if game exists now
+        try {
+          const finalCheck = await getGame(provider, gameId)
+          logger.info('Game', 'Final check succeeded - game exists', {
+            gameId,
+            status: Number(finalCheck.status),
+            host: finalCheck.host,
+            player: finalCheck.player
+          })
+          data = finalCheck
+        } catch (finalError: any) {
+          logger.error('Game', 'Final check also failed - game does not exist', {
+            gameId,
+            error: finalError?.message || String(finalError)
+          })
+          setGameData(null)
+          setLoading(false)
+          return
+        }
       }
       
       // Convert status to number for comparison
