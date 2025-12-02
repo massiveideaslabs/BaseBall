@@ -6,7 +6,9 @@ import Lobby from '@/components/Lobby'
 import Game from '@/components/Game'
 import Leaderboard from '@/components/Leaderboard'
 import WalletConnect from '@/components/WalletConnect'
+import DebugPanel from '@/components/DebugPanel'
 import { io, Socket } from 'socket.io-client'
+import { logger, logSocketEvent } from '@/lib/logger'
 
 function HomeContent() {
   const { account } = useWallet()
@@ -55,13 +57,21 @@ function HomeContent() {
     socketRef.current = socket
 
     socket.on('player-joined-game', (data: { gameId: number; host: string; player: string }) => {
-      // Check if this user is the host of this game
-      console.log('Player joined game event:', data)
-      console.log('Current account:', account)
-      console.log('Game host:', data.host)
+      logSocketEvent('player-joined-game', data, 'received')
+      logger.info('Page', 'Player joined game event received', {
+        gameId: data.gameId,
+        host: data.host,
+        player: data.player,
+        currentAccount: account
+      })
       
+      // Check if this user is the host of this game
       if (data.host && account && data.host.toLowerCase() === account.toLowerCase()) {
-        console.log('User is the host! Showing notification...')
+        logger.info('Page', 'User is the host - showing notification', {
+          gameId: data.gameId,
+          account,
+          host: data.host
+        })
         setHostNotificationGameId(data.gameId)
         setShowHostNotification(true)
         setHostNotificationTimer(60)
@@ -76,6 +86,7 @@ function HomeContent() {
           setHostNotificationTimer((prev) => {
             if (prev <= 1) {
               // Time's up - cancel the game
+              logger.warn('Page', 'Host notification timer expired', { gameId: data.gameId })
               if (timerRef.current) {
                 clearInterval(timerRef.current)
               }
@@ -88,7 +99,11 @@ function HomeContent() {
           })
         }, 1000)
       } else {
-        console.log('User is not the host, ignoring notification')
+        logger.debug('Page', 'User is not the host - ignoring notification', {
+          account,
+          host: data.host,
+          isHost: data.host?.toLowerCase() === account?.toLowerCase()
+        })
       }
     })
 
@@ -102,6 +117,10 @@ function HomeContent() {
 
   const handleJoinAsHost = () => {
     if (hostNotificationGameId) {
+      logger.info('Page', 'Host joining game from notification', {
+        gameId: hostNotificationGameId,
+        account
+      })
       setSelectedGameId(hostNotificationGameId)
       setCurrentView('game')
       setShowHostNotification(false)
@@ -255,11 +274,16 @@ function HomeContent() {
           {currentView === 'lobby' && (
             <Lobby 
               onJoinGame={(gameId) => {
+                logger.info('Page', 'Navigating to game from lobby', { gameId })
                 setSelectedGameId(gameId)
                 setCurrentView('game')
               }}
-              onCreateGame={() => setCurrentView('game')}
+              onCreateGame={() => {
+                logger.info('Page', 'Creating new game')
+                setCurrentView('game')
+              }}
               onPracticeMode={() => {
+                logger.info('Page', 'Starting practice mode')
                 setSelectedGameId(null)
                 setCurrentView('game')
               }}
@@ -270,6 +294,7 @@ function HomeContent() {
               gameId={selectedGameId}
               practiceMode={selectedGameId === null}
               onExit={() => {
+                logger.info('Page', 'Exiting game - returning to lobby', { gameId: selectedGameId })
                 setSelectedGameId(null)
                 setCurrentView('lobby')
               }}
@@ -282,6 +307,7 @@ function HomeContent() {
           <p>Built on Base Chain | Play at your own risk</p>
         </footer>
       </div>
+      <DebugPanel />
     </>
   )
 }

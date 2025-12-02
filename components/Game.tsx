@@ -4,6 +4,7 @@ import { useState, useEffect, useRef, useCallback } from 'react'
 import { useWallet } from '@/contexts/WalletContext'
 import { getGame, joinGame, cancelGame, completeGame, Game as GameData } from '@/lib/contract'
 import { ethers } from 'ethers'
+import { logger, logGameState } from '@/lib/logger'
 
 interface GameProps {
   gameId: number | null
@@ -61,13 +62,23 @@ export default function Game({ gameId, practiceMode = false, onExit }: GameProps
   const keysRef = useRef<{ up: boolean; down: boolean }>({ up: false, down: false })
 
   useEffect(() => {
+    logger.info('Game', 'Component mounted/updated', {
+      gameId,
+      practiceMode,
+      hasProvider: !!provider,
+      account
+    })
+    
     if (practiceMode) {
       // Practice mode - skip blockchain, just show difficulty selector
+      logger.info('Game', 'Practice mode enabled')
       setLoading(false)
     } else if (gameId && provider) {
+      logger.info('Game', 'Loading game from blockchain', { gameId })
       loadGame()
     } else if (!gameId && !practiceMode) {
       // No game ID and not practice mode - show error
+      logger.warn('Game', 'No gameId provided and not practice mode')
       setLoading(false)
     }
   }, [gameId, provider, practiceMode])
@@ -129,11 +140,24 @@ export default function Game({ gameId, practiceMode = false, onExit }: GameProps
   }, [gameStarted, gameOver])
 
   const loadGame = async () => {
-    if (!gameId || !provider) return
+    if (!gameId || !provider) {
+      logger.warn('Game', 'Cannot load game - missing gameId or provider', { gameId, hasProvider: !!provider })
+      return
+    }
     try {
-      console.log('Loading game:', gameId)
+      logger.info('Game', 'Fetching game data from blockchain', { gameId, account })
       const data = await getGame(provider, gameId)
-      console.log('Game data loaded:', data)
+      logger.info('Game', 'Game data received', { 
+        gameId,
+        status: data.status,
+        host: data.host,
+        player: data.player,
+        wager: data.wager?.toString(),
+        difficulty: data.difficulty
+      })
+      
+      logGameState(gameId, data.status, account, data)
+      
       setGameData(data)
       setLoading(false)
 
@@ -144,27 +168,40 @@ export default function Game({ gameId, practiceMode = false, onExit }: GameProps
         const playerAddress = data.player ? data.player.toLowerCase() : ''
         const accountAddress = account?.toLowerCase() || ''
         
-        console.log('Game status:', data.status)
-        console.log('Host:', data.host.toLowerCase())
-        console.log('Player:', playerAddress)
-        console.log('Account:', accountAddress)
-        console.log('Is host:', isHost, 'Is player:', isPlayer)
+        logger.info('Game', 'Game is Active - checking player participation', {
+          gameId,
+          status: data.status,
+          host: data.host.toLowerCase(),
+          player: playerAddress,
+          account: accountAddress,
+          isHost,
+          isPlayer
+        })
         
         if (isHost || isPlayer) {
-          console.log('Initializing game with difficulty:', data.difficulty)
+          logger.info('Game', 'Player is part of active game - initializing', {
+            gameId,
+            difficulty: data.difficulty,
+            role: isHost ? 'host' : 'player'
+          })
           initializeGame(data.difficulty)
         } else {
-          console.log('Player not part of this game yet - waiting for game to start')
+          logger.warn('Game', 'Game is active but current account is not host or player', {
+            gameId,
+            account,
+            host: data.host,
+            player: data.player
+          })
           // If game is active but we're not in it, show waiting message
         }
       } else if (data.status === 0) {
-        console.log('Game pending, status:', data.status)
+        logger.info('Game', 'Game is still pending', { gameId, status: data.status })
         // Game is still pending, will be handled by the status === 0 check below
       } else {
-        console.log('Game status unknown:', data.status)
+        logger.warn('Game', 'Unknown game status', { gameId, status: data.status })
       }
-    } catch (error) {
-      console.error('Error loading game:', error)
+    } catch (error: any) {
+      logger.error('Game', 'Error loading game', error)
       setLoading(false)
     }
   }
@@ -462,6 +499,7 @@ export default function Game({ gameId, practiceMode = false, onExit }: GameProps
   }, [gameOver, completing, draw])
 
   if (loading) {
+    logger.debug('Game', 'Rendering loading state', { gameId, practiceMode })
     return (
       <div className="flex items-center justify-center min-h-[600px]">
         <p className="text-retro-cyan text-xl">LOADING GAME...</p>
@@ -472,6 +510,7 @@ export default function Game({ gameId, practiceMode = false, onExit }: GameProps
 
   // Show error if gameId provided but no gameData loaded
   if (gameId && !practiceMode && !gameData) {
+    logger.error('Game', 'Game data not loaded but gameId provided', { gameId, practiceMode })
     return (
       <div className="max-w-4xl mx-auto text-center py-20">
         <p className="text-retro-yellow text-xl mb-4">GAME NOT FOUND</p>
@@ -484,6 +523,7 @@ export default function Game({ gameId, practiceMode = false, onExit }: GameProps
   }
 
   if (!gameData && gameId) {
+    logger.error('Game', 'No game data available', { gameId })
     return (
       <div className="flex items-center justify-center min-h-[600px]">
         <p className="text-retro-red text-xl">GAME NOT FOUND</p>
@@ -492,6 +532,7 @@ export default function Game({ gameId, practiceMode = false, onExit }: GameProps
   }
 
   if (gameData && gameData.status === 0 && gameData.host.toLowerCase() === account?.toLowerCase()) {
+    logger.info('Game', 'Rendering: Host waiting for player', { gameId, account })
     return (
       <div className="max-w-4xl mx-auto">
         <div className="pixel-border p-8 text-center">
@@ -513,6 +554,15 @@ export default function Game({ gameId, practiceMode = false, onExit }: GameProps
   if (gameData && gameData.status === 0) {
     const isHost = gameData.host.toLowerCase() === account?.toLowerCase()
     const isPlayer = gameData.player && gameData.player.toLowerCase() === account?.toLowerCase()
+    
+    logger.info('Game', 'Rendering: Pending game state', {
+      gameId,
+      isHost,
+      isPlayer,
+      account,
+      host: gameData.host,
+      player: gameData.player
+    })
     
     if (isHost) {
       // Host waiting for player
@@ -553,6 +603,11 @@ export default function Game({ gameId, practiceMode = false, onExit }: GameProps
       )
     } else {
       // Player has joined but game not started yet - show waiting
+      logger.warn('Game', 'Player has joined but game status is still Pending', {
+        gameId,
+        account,
+        status: gameData.status
+      })
       return (
         <div className="max-w-4xl mx-auto">
           <div className="pixel-border p-8 text-center">
@@ -565,6 +620,23 @@ export default function Game({ gameId, practiceMode = false, onExit }: GameProps
         </div>
       )
     }
+  }
+  
+  // Log if we reach here without rendering anything (blank screen scenario)
+  if (gameData && gameData.status === 1 && !gameStarted) {
+    const isHost = gameData.host.toLowerCase() === account?.toLowerCase()
+    const isPlayer = gameData.player && gameData.player.toLowerCase() === account?.toLowerCase()
+    
+    logger.error('Game', 'CRITICAL: Active game but not started - BLANK SCREEN RISK', {
+      gameId,
+      status: gameData.status,
+      account,
+      host: gameData.host,
+      player: gameData.player,
+      isHost,
+      isPlayer,
+      gameStarted
+    })
   }
 
   if (practiceMode && !gameStarted && !loading) {
@@ -634,6 +706,13 @@ export default function Game({ gameId, practiceMode = false, onExit }: GameProps
     )
   }
 
+  logger.info('Game', 'Rendering: Active game canvas', {
+    gameId,
+    gameStarted,
+    practiceMode,
+    score: scoreRef.current
+  })
+  
   return (
     <div className="max-w-4xl mx-auto">
       <div className="mb-4 flex justify-between items-center">

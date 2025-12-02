@@ -61,16 +61,25 @@ io.on('connection', (socket) => {
 
   // Handle game joined event
   socket.on('game-joined', (data) => {
-    console.log('Game joined event:', data);
+    console.log('[SERVER] Game joined event received:', JSON.stringify(data, null, 2));
+    console.log('[SERVER] Socket ID:', socket.id);
+    console.log('[SERVER] Broadcasting to all clients...');
+    
     // Broadcast to all clients
     socket.broadcast.emit('game-joined', data);
+    console.log('[SERVER] Broadcasted game-joined event');
+    
     // Emit specific event for the host (if host is provided)
     if (data.host) {
+      console.log('[SERVER] Emitting player-joined-game event for host:', data.host);
       socket.broadcast.emit('player-joined-game', {
         gameId: data.gameId,
         host: data.host,
         player: data.player
       });
+      console.log('[SERVER] Broadcasted player-joined-game event');
+    } else {
+      console.log('[SERVER] WARNING: No host provided in game-joined event');
     }
   });
 

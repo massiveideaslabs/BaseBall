@@ -2,9 +2,10 @@
 
 import { useState, useEffect, useRef } from 'react'
 import { useWallet } from '@/contexts/WalletContext'
-import { getAllPendingGames, createGame, cancelGame, cancelExpiredGame, joinGame, Game } from '@/lib/contract'
+import { getAllPendingGames, createGame, cancelGame, cancelExpiredGame, joinGame, getGame, Game } from '@/lib/contract'
 import { ethers } from 'ethers'
 import { io, Socket } from 'socket.io-client'
+import { logger, logSocketEvent, logTransaction } from '@/lib/logger'
 
 interface LobbyProps {
   onJoinGame: (gameId: number) => void
@@ -41,17 +42,20 @@ export default function Lobby({ onJoinGame, onCreateGame, onPracticeMode }: Lobb
       socketRef.current = socket
 
       socket.on('game-created', () => {
-        console.log('New game created, refreshing lobby...')
+        logSocketEvent('game-created', {}, 'received')
+        logger.info('Lobby', 'New game created - refreshing lobby')
         loadGames()
       })
 
       socket.on('game-joined', (data: { gameId: number }) => {
-        console.log('Game joined:', data.gameId)
+        logSocketEvent('game-joined', data, 'received')
+        logger.info('Lobby', 'Game joined event received', data)
         loadGames()
       })
 
       socket.on('game-cancelled', (data: { gameId: number }) => {
-        console.log('Game cancelled:', data.gameId)
+        logSocketEvent('game-cancelled', data, 'received')
+        logger.info('Lobby', 'Game cancelled event received', data)
         loadGames()
       })
 
@@ -337,29 +341,112 @@ export default function Lobby({ onJoinGame, onCreateGame, onPracticeMode }: Lobb
             <div className="flex gap-4">
               <button
                 onClick={async () => {
-                  if (!signer || !gameToJoin) return
+                  if (!signer || !gameToJoin || !provider) return
                   try {
                     setJoining(true)
-                    const wagerAmount = ethers.formatEther(gameToJoin.wager)
                     const gameId = Number(gameToJoin.gameId)
-                    await joinGame(signer, gameId, wagerAmount)
+                    
+                    // Refresh game list and verify game is still available before joining
+                    await loadGames()
+                    
+                    // Get the latest game state from the blockchain
+                    const currentGame = await getGame(provider, gameId)
+                    
+                    // Check if game still exists and is available
+                    if (currentGame.status !== 0) { // 0 = Pending
+                      const statusMessages: { [key: number]: string } = {
+                        1: 'This game has already been joined by another player.',
+                        2: 'This game has already been completed.',
+                        3: 'This game has been cancelled.'
+                      }
+                      const message = statusMessages[currentGame.status] || 'This game is no longer available.'
+                      alert(message)
+                      setShowJoinConfirm(false)
+                      setGameToJoin(null)
+                      return
+                    }
+                    
+                    // Check if game has expired
+                    const now = Math.floor(Date.now() / 1000)
+                    if (currentGame.expiresAt && Number(currentGame.expiresAt) <= now) {
+                      alert('This game has expired and is no longer available.')
+                      setShowJoinConfirm(false)
+                      setGameToJoin(null)
+                      await loadGames() // Refresh to show updated state
+                      return
+                    }
+                    
+                    // Verify wager still matches
+                    if (currentGame.wager !== gameToJoin.wager) {
+                      alert('The wager amount for this game has changed. Please refresh and try again.')
+                      setShowJoinConfirm(false)
+                      setGameToJoin(null)
+                      await loadGames()
+                      return
+                    }
+                    
+                    // Verify user is not trying to join their own game
+                    if (currentGame.host.toLowerCase() === account?.toLowerCase()) {
+                      alert('You cannot join your own game.')
+                      setShowJoinConfirm(false)
+                      setGameToJoin(null)
+                      return
+                    }
+                    
+                    // All checks passed, proceed with joining
+                    logger.info('Lobby', 'All validation checks passed - joining game', {
+                      gameId,
+                      account,
+                      host: currentGame.host,
+                      wager: ethers.formatEther(currentGame.wager)
+                    })
+                    
+                    const wagerAmount = ethers.formatEther(currentGame.wager)
+                    const tx = await joinGame(signer, gameId, wagerAmount)
+                    logTransaction('joinGame', tx.hash, gameId)
+                    logger.info('Lobby', 'Join game transaction sent', {
+                      gameId,
+                      txHash: tx.hash
+                    })
+                    
                     setShowJoinConfirm(false)
                     // Emit socket event for real-time update and host notification
                     if (socketRef.current) {
-                      socketRef.current.emit('game-joined', { 
+                      const socketData = { 
                         gameId,
-                        host: gameToJoin.host,
+                        host: currentGame.host,
                         player: account
-                      })
+                      }
+                      logSocketEvent('game-joined', socketData, 'sent')
+                      logger.info('Lobby', 'Emitting game-joined socket event', socketData)
+                      socketRef.current.emit('game-joined', socketData)
                     }
                     // Wait a moment for blockchain to update, then navigate to game
+                    logger.info('Lobby', 'Navigating to game', { gameId })
                     setTimeout(() => {
                       onJoinGame(gameId)
                     }, 1000)
                     setGameToJoin(null)
                   } catch (error: any) {
                     console.error('Error joining game:', error)
-                    alert(error.message || 'Failed to join game. Please try again.')
+                    // Parse error message to provide more helpful feedback
+                    let errorMessage = 'Failed to join game. Please try again.'
+                    if (error.message) {
+                      if (error.message.includes('Game not available')) {
+                        errorMessage = 'This game is no longer available. It may have been joined by another player, cancelled, or expired.'
+                      } else if (error.message.includes('Wager must match')) {
+                        errorMessage = 'The wager amount does not match. Please refresh and try again.'
+                      } else if (error.message.includes('Cannot join your own game')) {
+                        errorMessage = 'You cannot join your own game.'
+                      } else if (error.message.includes('Game has expired')) {
+                        errorMessage = 'This game has expired and is no longer available.'
+                      } else {
+                        errorMessage = error.message
+                      }
+                    }
+                    alert(errorMessage)
+                    // Refresh games list to show updated state
+                    await loadGames()
                   } finally {
                     setJoining(false)
                   }
@@ -450,9 +537,41 @@ export default function Lobby({ onJoinGame, onCreateGame, onPracticeMode }: Lobb
                       </>
                     ) : (
                       <button
-                        onClick={() => {
-                          setGameToJoin(game)
-                          setShowJoinConfirm(true)
+                        onClick={async () => {
+                          // Refresh game state before showing join confirmation
+                          if (provider) {
+                            try {
+                              await loadGames()
+                              const currentGame = await getGame(provider, Number(game.gameId))
+                              
+                              // Check if game is still available
+                              if (currentGame.status !== 0) { // 0 = Pending
+                                alert('This game is no longer available. It may have been joined by another player or cancelled.')
+                                await loadGames()
+                                return
+                              }
+                              
+                              // Check if expired
+                              const now = Math.floor(Date.now() / 1000)
+                              if (currentGame.expiresAt && Number(currentGame.expiresAt) <= now) {
+                                alert('This game has expired and is no longer available.')
+                                await loadGames()
+                                return
+                              }
+                              
+                              // Update gameToJoin with latest state
+                              setGameToJoin(currentGame)
+                              setShowJoinConfirm(true)
+                            } catch (error) {
+                              console.error('Error checking game state:', error)
+                              // Still allow them to try, but show warning
+                              setGameToJoin(game)
+                              setShowJoinConfirm(true)
+                            }
+                          } else {
+                            setGameToJoin(game)
+                            setShowJoinConfirm(true)
+                          }
                         }}
                         disabled={expired}
                         className="pixel-button"
