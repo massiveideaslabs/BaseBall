@@ -76,12 +76,73 @@ export default function Game({ gameId, practiceMode = false, onExit }: GameProps
     } else if (gameId && provider) {
       logger.info('Game', 'Loading game from blockchain', { gameId })
       loadGame()
+      
+      // Set up polling to check game state periodically when waiting for other player
+      const pollInterval = setInterval(async () => {
+        if (gameId && provider && gameData && gameData.status === 1 && !gameStarted) {
+          try {
+            const updatedGame = await getGame(provider, gameId)
+            const updatedStatus = Number(updatedGame.status)
+            const hasPlayer = updatedGame.player && updatedGame.player !== '0x0000000000000000000000000000000000000000'
+            
+            logger.info('Game', 'Polling game state', {
+              gameId,
+              status: updatedStatus,
+              hasPlayer,
+              gameStarted
+            })
+            
+            // If both players are now present and game hasn't started, reload game
+            if (updatedStatus === 1 && hasPlayer && !gameStarted) {
+              logger.info('Game', 'Both players detected - reloading game', { gameId })
+              loadGame()
+            }
+          } catch (error) {
+            logger.error('Game', 'Error polling game state', error)
+          }
+        }
+      }, 2000) // Poll every 2 seconds
+      
+      return () => clearInterval(pollInterval)
     } else if (!gameId && !practiceMode) {
       // No game ID and not practice mode - show error
       logger.warn('Game', 'No gameId provided and not practice mode')
       setLoading(false)
     }
-  }, [gameId, provider, practiceMode])
+  }, [gameId, provider, account, practiceMode])
+
+  // Poll game state when waiting for other player
+  useEffect(() => {
+    if (!gameId || !provider || practiceMode || gameStarted) return
+    
+    // Set up polling to check game state periodically when waiting for other player
+    const pollInterval = setInterval(async () => {
+      if (gameId && provider && gameData && gameData.status === 1 && !gameStarted) {
+        try {
+          const updatedGame = await getGame(provider, gameId)
+          const updatedStatus = Number(updatedGame.status)
+          const hasPlayer = updatedGame.player && updatedGame.player !== '0x0000000000000000000000000000000000000000'
+          
+          logger.info('Game', 'Polling game state', {
+            gameId,
+            status: updatedStatus,
+            hasPlayer,
+            gameStarted
+          })
+          
+          // If both players are now present and game hasn't started, reload game
+          if (updatedStatus === 1 && hasPlayer && !gameStarted) {
+            logger.info('Game', 'Both players detected - reloading game', { gameId })
+            loadGame()
+          }
+        } catch (error) {
+          logger.error('Game', 'Error polling game state', error)
+        }
+      }
+    }, 2000) // Poll every 2 seconds
+    
+    return () => clearInterval(pollInterval)
+  }, [gameId, provider, practiceMode, gameData, gameStarted, loadGame])
 
   useEffect(() => {
     if (gameStarted && !gameOver) {
@@ -139,7 +200,7 @@ export default function Game({ gameId, practiceMode = false, onExit }: GameProps
     }
   }, [gameStarted, gameOver])
 
-  const loadGame = async () => {
+  const loadGame = useCallback(async () => {
     if (!gameId || !provider) {
       logger.warn('Game', 'Cannot load game - missing gameId or provider', { gameId, hasProvider: !!provider })
       return
@@ -201,12 +262,13 @@ export default function Game({ gameId, practiceMode = false, onExit }: GameProps
     setGameData(data)
     setLoading(false)
 
-    // If game is active (status === 1) and player is part of it, start the game
+    // If game is active (status === 1) and player is part of it, check if both players are ready
     if (status === 1) {
       const isHost = data.host.toLowerCase() === account?.toLowerCase()
       const isPlayer = data.player && data.player.toLowerCase() === account?.toLowerCase()
       const playerAddress = data.player ? data.player.toLowerCase() : ''
       const accountAddress = account?.toLowerCase() || ''
+      const hasPlayer = data.player && data.player !== '0x0000000000000000000000000000000000000000'
       
       logger.info('Game', 'Game is Active - checking player participation', {
         gameId,
@@ -215,16 +277,28 @@ export default function Game({ gameId, practiceMode = false, onExit }: GameProps
         player: playerAddress,
         account: accountAddress,
         isHost,
-        isPlayer
+        isPlayer,
+        hasPlayer
       })
       
       if (isHost || isPlayer) {
-        logger.info('Game', 'Player is part of active game - initializing', {
-          gameId,
-          difficulty: data.difficulty,
-          role: isHost ? 'host' : 'player'
-        })
-        initializeGame(data.difficulty)
+        // Both players must be present (hasPlayer = true) before starting
+        if (hasPlayer) {
+          // Both players are present - start the game
+          logger.info('Game', 'Both players present - initializing game', {
+            gameId,
+            difficulty: data.difficulty,
+            role: isHost ? 'host' : 'player'
+          })
+          initializeGame(data.difficulty)
+        } else {
+          // Player hasn't joined yet - show waiting message
+          logger.info('Game', 'Waiting for other player to join', { 
+            gameId,
+            role: isHost ? 'host' : 'player'
+          })
+          // Don't initialize game yet, will show waiting message in render
+        }
       } else {
         logger.warn('Game', 'Game is active but current account is not host or player', {
           gameId,
@@ -240,7 +314,7 @@ export default function Game({ gameId, practiceMode = false, onExit }: GameProps
     } else {
       logger.warn('Game', 'Unknown game status', { gameId, status: status })
     }
-  }
+  }, [gameId, provider, account])
 
   const initializeGame = (difficulty: number) => {
     // Base speed increases with difficulty (1-10)
@@ -658,12 +732,13 @@ export default function Game({ gameId, practiceMode = false, onExit }: GameProps
     }
   }
   
-  // Log if we reach here without rendering anything (blank screen scenario)
+  // Show waiting message if game is Active but not started yet
   if (gameData && gameData.status === 1 && !gameStarted) {
     const isHost = gameData.host.toLowerCase() === account?.toLowerCase()
     const isPlayer = gameData.player && gameData.player.toLowerCase() === account?.toLowerCase()
+    const hasPlayer = gameData.player && gameData.player !== '0x0000000000000000000000000000000000000000'
     
-    logger.error('Game', 'CRITICAL: Active game but not started - BLANK SCREEN RISK', {
+    logger.info('Game', 'Active game but not started - showing waiting message', {
       gameId,
       status: gameData.status,
       account,
@@ -671,8 +746,55 @@ export default function Game({ gameId, practiceMode = false, onExit }: GameProps
       player: gameData.player,
       isHost,
       isPlayer,
+      hasPlayer,
       gameStarted
     })
+    
+    if (isHost && hasPlayer) {
+      // Host is here, player has joined - should start soon
+      return (
+        <div className="max-w-4xl mx-auto">
+          <div className="pixel-border p-8 text-center">
+            <h2 className="text-3xl mb-4">WAITING FOR PLAYER</h2>
+            <p className="mb-6">The other player has joined. Game will start shortly...</p>
+            <button onClick={onExit} className="pixel-button">
+              BACK TO LOBBY
+            </button>
+          </div>
+        </div>
+      )
+    } else if (isPlayer && hasPlayer) {
+      // Player is here, waiting for host to join
+      return (
+        <div className="max-w-4xl mx-auto">
+          <div className="pixel-border p-8 text-center">
+            <h2 className="text-3xl mb-4">WAITING FOR OTHER PLAYER</h2>
+            <p className="mb-6">You've joined the game. Waiting for the other player to join...</p>
+            <button onClick={onExit} className="pixel-button">
+              BACK TO LOBBY
+            </button>
+          </div>
+        </div>
+      )
+    } else if (isHost && !hasPlayer) {
+      // Host is here but player hasn't joined yet
+      return (
+        <div className="max-w-4xl mx-auto">
+          <div className="pixel-border p-8 text-center">
+            <h2 className="text-3xl mb-4">WAITING FOR PLAYER</h2>
+            <p className="mb-6">Your game is waiting for another player to join.</p>
+            <div className="flex gap-4 justify-center">
+              <button onClick={handleCancelGame} className="pixel-button">
+                CANCEL GAME
+              </button>
+              <button onClick={onExit} className="pixel-button">
+                BACK TO LOBBY
+              </button>
+            </div>
+          </div>
+        </div>
+      )
+    }
   }
 
   if (practiceMode && !gameStarted && !loading) {
