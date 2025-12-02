@@ -70,7 +70,7 @@ export default function Game({ gameId, practiceMode = false, onExit }: GameProps
     
     try {
       // Retry logic to handle blockchain state sync delays
-      let retries = 5
+      let retries = 8 // Increased retries for better reliability
       let data: GameData | null = null
       
       while (retries > 0 && !data) {
