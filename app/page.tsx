@@ -11,7 +11,7 @@ import { io, Socket } from 'socket.io-client'
 import { logger, logSocketEvent } from '@/lib/logger'
 
 function HomeContent() {
-  const { account } = useWallet()
+  const { account, provider } = useWallet()
   const [currentView, setCurrentView] = useState<'lobby' | 'game' | 'leaderboard'>('lobby')
   const [selectedGameId, setSelectedGameId] = useState<number | null>(null)
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false)
