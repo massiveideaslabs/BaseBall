@@ -188,12 +188,36 @@ export async function getGame(
   provider: ethers.BrowserProvider,
   gameId: number
 ): Promise<Game> {
+  if (!CONTRACT_ADDRESS) {
+    throw new Error('Contract address not configured. Please set NEXT_PUBLIC_CONTRACT_ADDRESS environment variable.')
+  }
+  
   const contract = new ethers.Contract(
     CONTRACT_ADDRESS,
     BaseBallABI,
     provider
   )
-  return await contract.getGame(gameId)
+  
+  try {
+    const game = await contract.getGame(gameId)
+    
+    // Validate that the game exists (non-existent games will have gameId = 0 and host = zero address)
+    // Check both gameId and host to be sure
+    if (game.gameId === 0n || game.host === '0x0000000000000000000000000000000000000000') {
+      throw new Error(`Game ${gameId} does not exist`)
+    }
+    
+    return game
+  } catch (error: any) {
+    // Re-throw with more context if it's already our custom error
+    if (error.message?.includes('does not exist')) {
+      throw error
+    }
+    
+    // Wrap other errors with more context
+    const errorMessage = error?.message || error?.toString() || 'Unknown error'
+    throw new Error(`Failed to fetch game ${gameId}: ${errorMessage}`)
+  }
 }
 
 export async function getAllPendingGames(

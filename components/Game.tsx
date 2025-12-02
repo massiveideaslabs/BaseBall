@@ -82,15 +82,22 @@ export default function Game({ gameId, practiceMode = false, onExit }: GameProps
           })
           data = await getGame(provider, gameId)
           
-          // Validate that we got valid game data (host should not be zero address)
-          if (!data || !data.host || data.host === '0x0000000000000000000000000000000000000000') {
+          // Validate that we got valid game data
+          // Non-existent games will have gameId = 0 and host = zero address
+          if (!data || 
+              !data.host || 
+              data.host === '0x0000000000000000000000000000000000000000' ||
+              data.gameId === 0n ||
+              Number(data.gameId) !== gameId) {
             logger.warn('Game', 'Invalid game data received - game may not exist', {
               gameId,
+              receivedGameId: data?.gameId ? Number(data.gameId) : null,
               hasHost: !!data?.host,
-              host: data?.host
+              host: data?.host,
+              gameIdMatches: data?.gameId ? Number(data.gameId) === gameId : false
             })
-            // Treat as error and retry
-            throw new Error('Invalid game data - game may not exist')
+            // Treat as error and retry (might be blockchain sync delay)
+            throw new Error('Invalid game data - game may not exist or blockchain state not synced')
           }
           
           logger.info('Game', 'Game data received', { 
@@ -105,6 +112,17 @@ export default function Game({ gameId, practiceMode = false, onExit }: GameProps
         } catch (error: any) {
           logger.error('Game', 'Error loading game', error)
           const errorMessage = error?.message || error?.toString() || 'Unknown error'
+          
+          // Check if this is a "game does not exist" error (don't retry for this)
+          if (errorMessage.includes('does not exist')) {
+            logger.error('Game', 'Game does not exist - stopping retries', {
+              gameId,
+              errorMessage
+            })
+            retries = 0 // Stop retrying if game truly doesn't exist
+            break
+          }
+          
           logger.error('Game', 'Error details', {
             gameId,
             errorMessage,
