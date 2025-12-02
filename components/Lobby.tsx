@@ -9,7 +9,7 @@ import { logger, logSocketEvent, logTransaction } from '@/lib/logger'
 
 interface LobbyProps {
   onJoinGame: (gameId: number) => void
-  onCreateGame: () => void
+  onCreateGame: (gameId?: number) => void
   onPracticeMode: () => void
 }
 
