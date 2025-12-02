@@ -352,14 +352,24 @@ export default function Lobby({ onJoinGame, onCreateGame, onPracticeMode }: Lobb
                     // Get the latest game state from the blockchain
                     const currentGame = await getGame(provider, gameId)
                     
-                    // Check if game still exists and is available
-                    if (currentGame.status !== 0) { // 0 = Pending
+                    // Convert status to number for comparison (it might be bigint from contract)
+                    const status = Number(currentGame.status)
+                    logger.info('Lobby', 'Final game state check before joining', {
+                      gameId,
+                      status,
+                      statusType: typeof currentGame.status,
+                      isPending: status === 0
+                    })
+                    
+                    // Check if game still exists and is available (0 = Pending)
+                    if (status !== 0) {
                       const statusMessages: { [key: number]: string } = {
                         1: 'This game has already been joined by another player.',
                         2: 'This game has already been completed.',
                         3: 'This game has been cancelled.'
                       }
-                      const message = statusMessages[currentGame.status] || 'This game is no longer available.'
+                      const message = statusMessages[status] || 'This game is no longer available.'
+                      logger.warn('Lobby', 'Cannot join - game not pending', { gameId, status })
                       alert(message)
                       setShowJoinConfirm(false)
                       setGameToJoin(null)
@@ -542,29 +552,52 @@ export default function Lobby({ onJoinGame, onCreateGame, onPracticeMode }: Lobb
                           if (provider) {
                             try {
                               await loadGames()
-                              const currentGame = await getGame(provider, Number(game.gameId))
+                              const gameId = Number(game.gameId)
+                              logger.info('Lobby', 'Checking game state before join', { gameId })
+                              const currentGame = await getGame(provider, gameId)
                               
-                              // Check if game is still available
-                              if (currentGame.status !== 0) { // 0 = Pending
-                                alert('This game is no longer available. It may have been joined by another player or cancelled.')
+                              // Convert status to number for comparison (it might be bigint from contract)
+                              const status = Number(currentGame.status)
+                              logger.info('Lobby', 'Game state check result', {
+                                gameId,
+                                status,
+                                statusType: typeof currentGame.status,
+                                isPending: status === 0
+                              })
+                              
+                              // Check if game is still available (0 = Pending)
+                              if (status !== 0) {
+                                const statusMessages: { [key: number]: string } = {
+                                  1: 'This game has already been joined by another player.',
+                                  2: 'This game has already been completed.',
+                                  3: 'This game has been cancelled.'
+                                }
+                                const message = statusMessages[status] || 'This game is no longer available. It may have been joined by another player or cancelled.'
+                                logger.warn('Lobby', 'Game not available', { gameId, status })
+                                alert(message)
                                 await loadGames()
                                 return
                               }
                               
                               // Check if expired
                               const now = Math.floor(Date.now() / 1000)
-                              if (currentGame.expiresAt && Number(currentGame.expiresAt) <= now) {
+                              const expiresAt = Number(currentGame.expiresAt)
+                              if (currentGame.expiresAt && expiresAt <= now) {
+                                logger.warn('Lobby', 'Game expired', { gameId, expiresAt, now })
                                 alert('This game has expired and is no longer available.')
                                 await loadGames()
                                 return
                               }
                               
+                              logger.info('Lobby', 'Game is available - showing join confirmation', { gameId })
                               // Update gameToJoin with latest state
                               setGameToJoin(currentGame)
                               setShowJoinConfirm(true)
-                            } catch (error) {
+                            } catch (error: any) {
+                              logger.error('Lobby', 'Error checking game state', error)
                               console.error('Error checking game state:', error)
-                              // Still allow them to try, but show warning
+                              // If there's an error, still allow them to try with the cached game data
+                              // The blockchain call will fail if the game doesn't exist anyway
                               setGameToJoin(game)
                               setShowJoinConfirm(true)
                             }
