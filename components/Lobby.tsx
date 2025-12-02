@@ -118,10 +118,34 @@ export default function Lobby({ onJoinGame, onCreateGame, onPracticeMode }: Lobb
       return
     }
 
+    // Validate inputs
+    if (!wager || parseFloat(wager) <= 0) {
+      alert('Please enter a valid wager amount')
+      return
+    }
+
+    if (difficulty < 1 || difficulty > 10) {
+      alert('Difficulty must be between 1 and 10')
+      return
+    }
+
+    if (expirationHours < 1 || expirationHours > 168) {
+      alert('Expiration must be between 1 hour and 7 days (168 hours)')
+      return
+    }
+
     try {
       setCreating(true)
+      logger.info('Lobby', 'Creating game', {
+        difficulty,
+        wager,
+        expirationHours
+      })
       const expirationSeconds = expirationHours * 60 * 60
-      await createGame(signer, difficulty, wager, expirationSeconds)
+      const tx = await createGame(signer, difficulty, wager, expirationSeconds)
+      logger.info('Lobby', 'Game created successfully', {
+        txHash: tx.hash
+      })
       setShowCreateModal(false)
       // Emit socket event for real-time update
       if (socketRef.current) {
@@ -129,8 +153,23 @@ export default function Lobby({ onJoinGame, onCreateGame, onPracticeMode }: Lobb
       }
       await loadGames()
     } catch (error: any) {
+      logger.error('Lobby', 'Error creating game', error)
       console.error('Error creating game:', error)
-      alert(error.message || 'Failed to create game')
+      
+      // Provide more specific error messages
+      let errorMessage = 'Failed to create game'
+      if (error?.message) {
+        errorMessage = error.message
+        // Handle common error cases
+        if (error.message.includes('user rejected')) {
+          errorMessage = 'Transaction was cancelled'
+        } else if (error.message.includes('insufficient funds')) {
+          errorMessage = 'Insufficient funds in your wallet'
+        } else if (error.message.includes('network')) {
+          errorMessage = 'Network error. Please check your connection and try again'
+        }
+      }
+      alert(errorMessage)
     } finally {
       setCreating(false)
     }
