@@ -202,6 +202,16 @@ export default function Game({ gameId, practiceMode = false, onExit }: GameProps
       }
     } catch (error: any) {
       logger.error('Game', 'Error loading game', error)
+      // Check if it's a "game doesn't exist" error or network error
+      const errorMessage = error?.message || error?.toString() || 'Unknown error'
+      logger.error('Game', 'Error details', {
+        gameId,
+        errorMessage,
+        errorType: error?.constructor?.name
+      })
+      
+      // Set gameData to null so we show the "GAME NOT FOUND" message
+      setGameData(null)
       setLoading(false)
     }
   }

@@ -419,6 +419,61 @@ export default function Lobby({ onJoinGame, onCreateGame, onPracticeMode }: Lobb
                       txHash: tx.hash
                     })
                     
+                    // Wait for transaction to be confirmed (tx.wait() already called in joinGame, but wait a bit more for state sync)
+                    logger.info('Lobby', 'Waiting for blockchain state to update', { gameId })
+                    await new Promise(resolve => setTimeout(resolve, 2000)) // Wait 2 seconds for state to sync
+                    
+                    // Verify the game is now active before navigating
+                    let retries = 3
+                    let gameLoaded = false
+                    while (retries > 0 && !gameLoaded) {
+                      try {
+                        const updatedGame = await getGame(provider, gameId)
+                        const updatedStatus = Number(updatedGame.status)
+                        logger.info('Lobby', 'Checking game status after join', {
+                          gameId,
+                          status: updatedStatus,
+                          retriesLeft: retries
+                        })
+                        
+                        if (updatedStatus === 1) { // Active
+                          logger.info('Lobby', 'Game is now Active - safe to navigate', { gameId })
+                          gameLoaded = true
+                        } else if (updatedStatus === 0) {
+                          // Still pending, wait a bit more
+                          logger.warn('Lobby', 'Game still pending, waiting...', { gameId, retriesLeft: retries })
+                          await new Promise(resolve => setTimeout(resolve, 1000))
+                          retries--
+                        } else {
+                          // Game cancelled or completed - shouldn't happen
+                          logger.error('Lobby', 'Unexpected game status after join', {
+                            gameId,
+                            status: updatedStatus
+                          })
+                          alert(`Game status is ${updatedStatus}. The game may have been cancelled.`)
+                          setShowJoinConfirm(false)
+                          setGameToJoin(null)
+                          await loadGames()
+                          return
+                        }
+                      } catch (error: any) {
+                        logger.error('Lobby', 'Error verifying game after join', error)
+                        retries--
+                        if (retries > 0) {
+                          await new Promise(resolve => setTimeout(resolve, 1000))
+                        }
+                      }
+                    }
+                    
+                    if (!gameLoaded) {
+                      logger.error('Lobby', 'Failed to verify game after join', { gameId })
+                      alert('Game joined but could not verify status. Please refresh and try joining the game again.')
+                      setShowJoinConfirm(false)
+                      setGameToJoin(null)
+                      await loadGames()
+                      return
+                    }
+                    
                     setShowJoinConfirm(false)
                     // Emit socket event for real-time update and host notification
                     if (socketRef.current) {
@@ -431,11 +486,9 @@ export default function Lobby({ onJoinGame, onCreateGame, onPracticeMode }: Lobb
                       logger.info('Lobby', 'Emitting game-joined socket event', socketData)
                       socketRef.current.emit('game-joined', socketData)
                     }
-                    // Wait a moment for blockchain to update, then navigate to game
+                    // Navigate to game now that we've verified it's active
                     logger.info('Lobby', 'Navigating to game', { gameId })
-                    setTimeout(() => {
-                      onJoinGame(gameId)
-                    }, 1000)
+                    onJoinGame(gameId)
                     setGameToJoin(null)
                   } catch (error: any) {
                     console.error('Error joining game:', error)
