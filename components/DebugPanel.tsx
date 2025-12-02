@@ -35,11 +35,6 @@ export default function DebugPanel() {
     }
   }, [])
 
-  // Don't render until mounted to avoid hydration issues
-  if (!mounted) {
-    return null
-  }
-
   useEffect(() => {
     if (isOpen && autoRefresh) {
       const interval = setInterval(() => {
@@ -54,6 +49,12 @@ export default function DebugPanel() {
       setLogs(logger.getLogs())
     }
   }, [isOpen])
+
+  // Don't render until mounted to avoid hydration issues
+  // IMPORTANT: This check must come AFTER all hooks to follow Rules of Hooks
+  if (!mounted) {
+    return null
+  }
 
   const filteredLogs = filter === 'all' 
     ? logs 
@@ -108,11 +109,11 @@ export default function DebugPanel() {
             boxShadow: '0 0 10px rgba(0, 255, 0, 0.5)',
             fontFamily: '"Press Start 2P", "Courier New", monospace'
           }}
-          onMouseEnter={(e: React.MouseEvent<HTMLButtonElement>) => {
-            e.currentTarget.style.backgroundColor = '#00cc00'
+          onMouseEnter={(e) => {
+            (e.target as HTMLButtonElement).style.backgroundColor = '#00cc00'
           }}
-          onMouseLeave={(e: React.MouseEvent<HTMLButtonElement>) => {
-            e.currentTarget.style.backgroundColor = '#00ff00'
+          onMouseLeave={(e) => {
+            (e.target as HTMLButtonElement).style.backgroundColor = '#00ff00'
           }}
         >
           🐛 DEBUG
