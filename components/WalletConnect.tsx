@@ -4,7 +4,7 @@ import { useWallet } from '@/contexts/WalletContext'
 import { useState, useEffect, useRef } from 'react'
 
 export default function WalletConnect() {
-  const { account, connectMetaMask, connectPhantom, connectWalletConnect, disconnectWallet, isConnected } = useWallet()
+  const { account, connectMetaMask, connectPhantom, connectBaseWallet, connectWalletConnect, disconnectWallet, isConnected } = useWallet()
   const [showMenu, setShowMenu] = useState(false)
   const menuRef = useRef<HTMLDivElement>(null)
 
@@ -101,6 +101,24 @@ export default function WalletConnect() {
                 }}
               >
                 Phantom
+              </button>
+              <button
+                onClick={async () => {
+                  setShowMenu(false)
+                  try {
+                    await connectBaseWallet()
+                  } catch (error) {
+                    console.error('Connection error:', error)
+                  }
+                }}
+                className="w-full text-left px-4 py-2 hover:bg-retro-green hover:text-retro-bg transition"
+                style={{
+                  color: '#00ff00',
+                  padding: '12px 16px',
+                  cursor: 'pointer',
+                }}
+              >
+                Base Wallet
               </button>
               <button
                 onClick={async () => {

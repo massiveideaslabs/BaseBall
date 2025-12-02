@@ -43,6 +43,7 @@ interface WalletContextType {
   signer: ethers.JsonRpcSigner | null
   connectMetaMask: () => Promise<void>
   connectPhantom: () => Promise<void>
+  connectBaseWallet: () => Promise<void>
   connectWalletConnect: () => Promise<void>
   disconnectWallet: () => void
   isConnected: boolean
@@ -209,6 +210,60 @@ export function WalletProvider({ children }: { children: ReactNode }) {
     } catch (error) {
       console.error('Phantom connection error:', error)
       alert('Failed to connect Phantom. Please check the extension and try again.')
+    }
+  }
+
+  const connectBaseWallet = async () => {
+    if (typeof window === 'undefined') return
+    const anyWindow = window as any
+    const eth = anyWindow.ethereum
+
+    // Base Wallet can be detected in multiple ways
+    let baseProvider: any | null = null
+    
+    // Check if Base Wallet is in the providers array
+    if (eth?.providers && Array.isArray(eth.providers)) {
+      baseProvider = eth.providers.find((p: any) => 
+        p.isBase || 
+        p.isCoinbaseWallet || 
+        (p.constructor?.name && p.constructor.name.includes('Base'))
+      ) || null
+    }
+    
+    // Check if the main provider is Base Wallet
+    if (!baseProvider && eth) {
+      if (eth.isBase || eth.isCoinbaseWallet) {
+        baseProvider = eth
+      }
+    }
+
+    // Also check for window.coinbaseWalletExtension (Base Wallet sometimes uses this)
+    if (!baseProvider && anyWindow.coinbaseWalletExtension) {
+      baseProvider = anyWindow.coinbaseWalletExtension
+    }
+
+    if (!baseProvider) {
+      alert(
+        'Base Wallet not detected. Please install the Base Wallet extension.\n\n' +
+        'You can download it from: https://base.org/wallet'
+      )
+      return
+    }
+
+    try {
+      const browserProvider = new ethers.BrowserProvider(baseProvider)
+      await browserProvider.send('eth_requestAccounts', [])
+      const networkOk = await ensureCorrectNetwork(browserProvider)
+      if (!networkOk) return
+      const signer = await browserProvider.getSigner()
+      const address = await signer.getAddress()
+
+      setProvider(browserProvider)
+      setSigner(signer)
+      setAccount(address)
+    } catch (error) {
+      console.error('Base Wallet connection error:', error)
+      alert('Failed to connect Base Wallet. Please check the extension and try again.')
     }
   }
 
@@ -543,6 +598,7 @@ export function WalletProvider({ children }: { children: ReactNode }) {
         signer,
         connectMetaMask,
         connectPhantom,
+        connectBaseWallet,
         connectWalletConnect,
         disconnectWallet,
         isConnected: !!account,
