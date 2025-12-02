@@ -144,75 +144,101 @@ export default function Game({ gameId, practiceMode = false, onExit }: GameProps
       logger.warn('Game', 'Cannot load game - missing gameId or provider', { gameId, hasProvider: !!provider })
       return
     }
-    try {
-      logger.info('Game', 'Fetching game data from blockchain', { gameId, account })
-      const data = await getGame(provider, gameId)
-      logger.info('Game', 'Game data received', { 
-        gameId,
-        status: data.status,
-        host: data.host,
-        player: data.player,
-        wager: data.wager?.toString(),
-        difficulty: data.difficulty
-      })
-      
-      logGameState(gameId, data.status, account, data)
-      
-      setGameData(data)
-      setLoading(false)
-
-      // If game is active (status === 1) and player is part of it, start the game
-      if (data.status === 1) {
-        const isHost = data.host.toLowerCase() === account?.toLowerCase()
-        const isPlayer = data.player && data.player.toLowerCase() === account?.toLowerCase()
-        const playerAddress = data.player ? data.player.toLowerCase() : ''
-        const accountAddress = account?.toLowerCase() || ''
-        
-        logger.info('Game', 'Game is Active - checking player participation', {
+    
+    // Retry logic to handle blockchain state sync delays
+    let retries = 5
+    let data: GameData | null = null
+    
+    while (retries > 0 && !data) {
+      try {
+        logger.info('Game', 'Fetching game data from blockchain', { 
+          gameId, 
+          account,
+          retriesLeft: retries 
+        })
+        data = await getGame(provider, gameId)
+        logger.info('Game', 'Game data received', { 
           gameId,
           status: data.status,
-          host: data.host.toLowerCase(),
-          player: playerAddress,
-          account: accountAddress,
-          isHost,
-          isPlayer
+          host: data.host,
+          player: data.player,
+          wager: data.wager?.toString(),
+          difficulty: data.difficulty
+        })
+        break // Success, exit retry loop
+      } catch (error: any) {
+        logger.error('Game', 'Error loading game', error)
+        const errorMessage = error?.message || error?.toString() || 'Unknown error'
+        logger.error('Game', 'Error details', {
+          gameId,
+          errorMessage,
+          errorType: error?.constructor?.name,
+          retriesLeft: retries
         })
         
-        if (isHost || isPlayer) {
-          logger.info('Game', 'Player is part of active game - initializing', {
-            gameId,
-            difficulty: data.difficulty,
-            role: isHost ? 'host' : 'player'
-          })
-          initializeGame(data.difficulty)
-        } else {
-          logger.warn('Game', 'Game is active but current account is not host or player', {
-            gameId,
-            account,
-            host: data.host,
-            player: data.player
-          })
-          // If game is active but we're not in it, show waiting message
+        retries--
+        if (retries > 0) {
+          // Wait before retrying (exponential backoff)
+          const waitTime = (6 - retries) * 500 // 500ms, 1000ms, 1500ms, 2000ms
+          logger.info('Game', `Retrying in ${waitTime}ms...`, { gameId, retriesLeft: retries })
+          await new Promise(resolve => setTimeout(resolve, waitTime))
         }
-      } else if (data.status === 0) {
-        logger.info('Game', 'Game is still pending', { gameId, status: data.status })
-        // Game is still pending, will be handled by the status === 0 check below
-      } else {
-        logger.warn('Game', 'Unknown game status', { gameId, status: data.status })
       }
-    } catch (error: any) {
-      logger.error('Game', 'Error loading game', error)
-      // Check if it's a "game doesn't exist" error or network error
-      const errorMessage = error?.message || error?.toString() || 'Unknown error'
-      logger.error('Game', 'Error details', {
-        gameId,
-        errorMessage,
-        errorType: error?.constructor?.name
-      })
-      
-      // Set gameData to null so we show the "GAME NOT FOUND" message
+    }
+    
+    if (!data) {
+      // All retries failed
+      logger.error('Game', 'Failed to load game after all retries', { gameId })
       setGameData(null)
       setLoading(false)
+      return
+    }
+    
+    // Convert status to number for comparison
+    const status = Number(data.status)
+    logGameState(gameId, status, account, data)
+    
+    setGameData(data)
+    setLoading(false)
+
+    // If game is active (status === 1) and player is part of it, start the game
+    if (status === 1) {
+      const isHost = data.host.toLowerCase() === account?.toLowerCase()
+      const isPlayer = data.player && data.player.toLowerCase() === account?.toLowerCase()
+      const playerAddress = data.player ? data.player.toLowerCase() : ''
+      const accountAddress = account?.toLowerCase() || ''
+      
+      logger.info('Game', 'Game is Active - checking player participation', {
+        gameId,
+        status: status,
+        host: data.host.toLowerCase(),
+        player: playerAddress,
+        account: accountAddress,
+        isHost,
+        isPlayer
+      })
+      
+      if (isHost || isPlayer) {
+        logger.info('Game', 'Player is part of active game - initializing', {
+          gameId,
+          difficulty: data.difficulty,
+          role: isHost ? 'host' : 'player'
+        })
+        initializeGame(data.difficulty)
+      } else {
+        logger.warn('Game', 'Game is active but current account is not host or player', {
+          gameId,
+          account,
+          host: data.host,
+          player: data.player
+        })
+        // If game is active but we're not in it, show waiting message
+      }
+    } else if (status === 0) {
+      logger.info('Game', 'Game is still pending', { gameId, status: status })
+      // Game is still pending, will be handled by the status === 0 check below
+    } else {
+      logger.warn('Game', 'Unknown game status', { gameId, status: status })
     }
   }
 

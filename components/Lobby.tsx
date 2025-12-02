@@ -487,7 +487,9 @@ export default function Lobby({ onJoinGame, onCreateGame, onPracticeMode }: Lobb
                       socketRef.current.emit('game-joined', socketData)
                     }
                     // Navigate to game now that we've verified it's active
+                    // Add a small delay to ensure blockchain state is fully synced
                     logger.info('Lobby', 'Navigating to game', { gameId })
+                    await new Promise(resolve => setTimeout(resolve, 500)) // Small delay for state sync
                     onJoinGame(gameId)
                     setGameToJoin(null)
                   } catch (error: any) {
