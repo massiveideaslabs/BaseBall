@@ -141,16 +141,27 @@ export default function Game({ gameId, practiceMode = false, onExit }: GameProps
       if (data.status === 1) {
         const isHost = data.host.toLowerCase() === account?.toLowerCase()
         const isPlayer = data.player && data.player.toLowerCase() === account?.toLowerCase()
-        console.log('Game status:', data.status, 'Is host:', isHost, 'Is player:', isPlayer)
+        const playerAddress = data.player ? data.player.toLowerCase() : ''
+        const accountAddress = account?.toLowerCase() || ''
+        
+        console.log('Game status:', data.status)
+        console.log('Host:', data.host.toLowerCase())
+        console.log('Player:', playerAddress)
+        console.log('Account:', accountAddress)
+        console.log('Is host:', isHost, 'Is player:', isPlayer)
         
         if (isHost || isPlayer) {
           console.log('Initializing game with difficulty:', data.difficulty)
           initializeGame(data.difficulty)
         } else {
-          console.log('Player not part of this game yet')
+          console.log('Player not part of this game yet - waiting for game to start')
+          // If game is active but we're not in it, show waiting message
         }
+      } else if (data.status === 0) {
+        console.log('Game pending, status:', data.status)
+        // Game is still pending, will be handled by the status === 0 check below
       } else {
-        console.log('Game not active yet, status:', data.status)
+        console.log('Game status unknown:', data.status)
       }
     } catch (error) {
       console.error('Error loading game:', error)
@@ -499,24 +510,61 @@ export default function Game({ gameId, practiceMode = false, onExit }: GameProps
     )
   }
 
-  if (gameData && gameData.status === 0 && gameData.host.toLowerCase() !== account?.toLowerCase()) {
-    return (
-      <div className="max-w-4xl mx-auto">
-        <div className="pixel-border p-8 text-center">
-          <h2 className="text-3xl mb-4">JOIN GAME</h2>
-          <p className="mb-2">Wager: {ethers.formatEther(gameData.wager)} ETH</p>
-          <p className="mb-2">Difficulty: {gameData.difficulty}/10</p>
-          <div className="flex gap-4 justify-center mt-6">
-            <button onClick={handleJoinGame} className="pixel-button">
-              JOIN GAME
-            </button>
+  if (gameData && gameData.status === 0) {
+    const isHost = gameData.host.toLowerCase() === account?.toLowerCase()
+    const isPlayer = gameData.player && gameData.player.toLowerCase() === account?.toLowerCase()
+    
+    if (isHost) {
+      // Host waiting for player
+      return (
+        <div className="max-w-4xl mx-auto">
+          <div className="pixel-border p-8 text-center">
+            <h2 className="text-3xl mb-4">WAITING FOR PLAYER</h2>
+            <p className="mb-6">Your game is waiting for another player to join.</p>
+            <div className="flex gap-4 justify-center">
+              <button onClick={handleCancelGame} className="pixel-button">
+                CANCEL GAME
+              </button>
+              <button onClick={onExit} className="pixel-button">
+                BACK TO LOBBY
+              </button>
+            </div>
+          </div>
+        </div>
+      )
+    } else if (!isPlayer) {
+      // Not the host and not joined yet - show join button
+      return (
+        <div className="max-w-4xl mx-auto">
+          <div className="pixel-border p-8 text-center">
+            <h2 className="text-3xl mb-4">JOIN GAME</h2>
+            <p className="mb-2">Wager: {ethers.formatEther(gameData.wager)} ETH</p>
+            <p className="mb-2">Difficulty: {gameData.difficulty}/10</p>
+            <div className="flex gap-4 justify-center mt-6">
+              <button onClick={handleJoinGame} className="pixel-button">
+                JOIN GAME
+              </button>
+              <button onClick={onExit} className="pixel-button">
+                BACK TO LOBBY
+              </button>
+            </div>
+          </div>
+        </div>
+      )
+    } else {
+      // Player has joined but game not started yet - show waiting
+      return (
+        <div className="max-w-4xl mx-auto">
+          <div className="pixel-border p-8 text-center">
+            <h2 className="text-3xl mb-4">WAITING FOR HOST</h2>
+            <p className="mb-6">You've joined the game. Waiting for the host to start...</p>
             <button onClick={onExit} className="pixel-button">
               BACK TO LOBBY
             </button>
           </div>
         </div>
-      </div>
-    )
+      )
+    }
   }
 
   if (practiceMode && !gameStarted && !loading) {
