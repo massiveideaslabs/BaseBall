@@ -2,8 +2,9 @@
 
 import { useState, useEffect, useRef } from 'react'
 import { useWallet } from '@/contexts/WalletContext'
-import { getAllPendingGames, createGame, cancelGame, cancelExpiredGame, Game } from '@/lib/contract'
+import { getAllPendingGames, createGame, cancelGame, cancelExpiredGame, joinGame, Game } from '@/lib/contract'
 import { ethers } from 'ethers'
+import { io, Socket } from 'socket.io-client'
 
 interface LobbyProps {
   onJoinGame: (gameId: number) => void
@@ -24,13 +25,39 @@ export default function Lobby({ onJoinGame, onCreateGame, onPracticeMode }: Lobb
   const [gameToCancel, setGameToCancel] = useState<number | null>(null)
   const [cancelling, setCancelling] = useState(false)
   const [openDropdown, setOpenDropdown] = useState<number | null>(null)
+  const [showJoinConfirm, setShowJoinConfirm] = useState(false)
+  const [gameToJoin, setGameToJoin] = useState<Game | null>(null)
+  const [joining, setJoining] = useState(false)
   const dropdownRef = useRef<HTMLDivElement>(null)
+  const socketRef = useRef<Socket | null>(null)
 
   useEffect(() => {
     if (provider) {
       loadGames()
-      const interval = setInterval(loadGames, 5000) // Refresh every 5 seconds
-      return () => clearInterval(interval)
+      
+      // Connect to Socket.io for real-time updates
+      const gameServerUrl = process.env.NEXT_PUBLIC_GAME_SERVER_URL || 'http://localhost:3001'
+      const socket = io(gameServerUrl)
+      socketRef.current = socket
+
+      socket.on('game-created', () => {
+        console.log('New game created, refreshing lobby...')
+        loadGames()
+      })
+
+      socket.on('game-joined', (data: { gameId: number }) => {
+        console.log('Game joined:', data.gameId)
+        loadGames()
+      })
+
+      socket.on('game-cancelled', (data: { gameId: number }) => {
+        console.log('Game cancelled:', data.gameId)
+        loadGames()
+      })
+
+      return () => {
+        socket.disconnect()
+      }
     }
   }, [provider])
 
@@ -86,6 +113,10 @@ export default function Lobby({ onJoinGame, onCreateGame, onPracticeMode }: Lobb
       const expirationSeconds = expirationHours * 60 * 60
       await createGame(signer, difficulty, wager, expirationSeconds)
       setShowCreateModal(false)
+      // Emit socket event for real-time update
+      if (socketRef.current) {
+        socketRef.current.emit('game-created')
+      }
       await loadGames()
     } catch (error: any) {
       console.error('Error creating game:', error)
@@ -108,6 +139,10 @@ export default function Lobby({ onJoinGame, onCreateGame, onPracticeMode }: Lobb
       setCancelling(true)
       await cancelGame(signer, gameToCancel)
       setShowCancelConfirm(false)
+      // Emit socket event for real-time update
+      if (socketRef.current) {
+        socketRef.current.emit('game-cancelled', { gameId: gameToCancel })
+      }
       setGameToCancel(null)
       await loadGames()
     } catch (error: any) {
@@ -283,6 +318,59 @@ export default function Lobby({ onJoinGame, onCreateGame, onPracticeMode }: Lobb
         </div>
       )}
 
+      {showJoinConfirm && gameToJoin && (
+        <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50">
+          <div className="bg-retro-bg pixel-border p-8 max-w-md w-full">
+            <h3 className="text-2xl mb-4">JOIN GAME?</h3>
+            <p className="mb-6 text-retro-cyan">
+              Are you sure you want to match the <span className="text-retro-yellow font-bold">{formatEther(gameToJoin.wager)} ETH</span> wager?
+            </p>
+            <p className="mb-6 text-sm text-retro-cyan">
+              You will need to approve the transaction in your wallet to deposit your wager.
+            </p>
+            <div className="flex gap-4">
+              <button
+                onClick={async () => {
+                  if (!signer || !gameToJoin) return
+                  try {
+                    setJoining(true)
+                    const wagerAmount = ethers.formatEther(gameToJoin.wager)
+                    await joinGame(signer, Number(gameToJoin.gameId), wagerAmount)
+                    setShowJoinConfirm(false)
+                    // Emit socket event for real-time update
+                    if (socketRef.current) {
+                      socketRef.current.emit('game-joined', { gameId: Number(gameToJoin.gameId) })
+                    }
+                    // Navigate to game
+                    onJoinGame(Number(gameToJoin.gameId))
+                    setGameToJoin(null)
+                  } catch (error: any) {
+                    console.error('Error joining game:', error)
+                    alert(error.message || 'Failed to join game. Please try again.')
+                  } finally {
+                    setJoining(false)
+                  }
+                }}
+                disabled={joining || !signer}
+                className="pixel-button flex-1"
+              >
+                {joining ? 'JOINING...' : 'YES'}
+              </button>
+              <button
+                onClick={() => {
+                  setShowJoinConfirm(false)
+                  setGameToJoin(null)
+                }}
+                disabled={joining}
+                className="pixel-button flex-1"
+              >
+                NO
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {loading ? (
         <div className="text-center py-20">
           <p className="text-retro-cyan">LOADING GAMES...</p>
@@ -349,7 +437,10 @@ export default function Lobby({ onJoinGame, onCreateGame, onPracticeMode }: Lobb
                       </>
                     ) : (
                       <button
-                        onClick={() => onJoinGame(Number(game.gameId))}
+                        onClick={() => {
+                          setGameToJoin(game)
+                          setShowJoinConfirm(true)
+                        }}
                         disabled={expired}
                         className="pixel-button"
                       >

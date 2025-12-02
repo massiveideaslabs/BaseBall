@@ -54,6 +54,23 @@ io.on('connection', (socket) => {
     }
   });
 
+  // Handle game creation event
+  socket.on('game-created', () => {
+    socket.broadcast.emit('game-created');
+  });
+
+  // Handle game joined event
+  socket.on('game-joined', (data) => {
+    socket.broadcast.emit('game-joined', data);
+    // Also emit a specific event for the host
+    socket.broadcast.emit('player-joined-game', data);
+  });
+
+  // Handle game cancelled event
+  socket.on('game-cancelled', (data) => {
+    socket.broadcast.emit('game-cancelled', data);
+  });
+
   socket.on('paddle-move', (data) => {
     const { gameId, y } = data;
     socket.to(`game-${gameId}`).emit('opponent-paddle', { y });

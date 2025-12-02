@@ -1,18 +1,25 @@
 'use client'
 
 import { useState, useEffect, useRef } from 'react'
-import { WalletProvider } from '@/contexts/WalletContext'
+import { WalletProvider, useWallet } from '@/contexts/WalletContext'
 import Lobby from '@/components/Lobby'
 import Game from '@/components/Game'
 import Leaderboard from '@/components/Leaderboard'
 import WalletConnect from '@/components/WalletConnect'
+import { io, Socket } from 'socket.io-client'
 
-export default function Home() {
+function HomeContent() {
+  const { account } = useWallet()
   const [currentView, setCurrentView] = useState<'lobby' | 'game' | 'leaderboard'>('lobby')
   const [selectedGameId, setSelectedGameId] = useState<number | null>(null)
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false)
   const [isMobile, setIsMobile] = useState(false)
+  const [showHostNotification, setShowHostNotification] = useState(false)
+  const [hostNotificationGameId, setHostNotificationGameId] = useState<number | null>(null)
+  const [hostNotificationTimer, setHostNotificationTimer] = useState(60)
   const menuRef = useRef<HTMLDivElement>(null)
+  const socketRef = useRef<Socket | null>(null)
+  const timerRef = useRef<NodeJS.Timeout | null>(null)
 
   useEffect(() => {
     const checkMobile = () => {
@@ -39,8 +46,95 @@ export default function Home() {
     }
   }, [isMobileMenuOpen])
 
+  // Set up Socket.io for host notifications
+  useEffect(() => {
+    if (!account) return
+
+    const gameServerUrl = process.env.NEXT_PUBLIC_GAME_SERVER_URL || 'http://localhost:3001'
+    const socket = io(gameServerUrl)
+    socketRef.current = socket
+
+    socket.on('player-joined-game', (data: { gameId: number }) => {
+      // Check if this user is the host of this game
+      // We'll need to verify this in the server or check game data
+      console.log('Player joined game:', data.gameId)
+      setHostNotificationGameId(data.gameId)
+      setShowHostNotification(true)
+      setHostNotificationTimer(60)
+      
+      // Start countdown timer
+      timerRef.current = setInterval(() => {
+        setHostNotificationTimer((prev) => {
+          if (prev <= 1) {
+            // Time's up - cancel the game
+            if (timerRef.current) {
+              clearInterval(timerRef.current)
+            }
+            setShowHostNotification(false)
+            setHostNotificationGameId(null)
+            // TODO: Auto-cancel game if host doesn't join
+            return 0
+          }
+          return prev - 1
+        })
+      }, 1000)
+    })
+
+    return () => {
+      socket.disconnect()
+      if (timerRef.current) {
+        clearInterval(timerRef.current)
+      }
+    }
+  }, [account])
+
+  const handleJoinAsHost = () => {
+    if (hostNotificationGameId) {
+      setSelectedGameId(hostNotificationGameId)
+      setCurrentView('game')
+      setShowHostNotification(false)
+      setHostNotificationGameId(null)
+      if (timerRef.current) {
+        clearInterval(timerRef.current)
+      }
+    }
+  }
+
   return (
-    <WalletProvider>
+    <>
+      {showHostNotification && (
+        <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50">
+          <div className="bg-retro-bg pixel-border p-8 max-w-md w-full">
+            <h3 className="text-2xl mb-4 text-retro-yellow">SOMEONE JOINED YOUR GAME!</h3>
+            <p className="mb-4 text-retro-cyan">
+              A player has joined Game #{hostNotificationGameId} and matched your wager.
+            </p>
+            <p className="mb-6 text-retro-yellow text-xl">
+              Join within {hostNotificationTimer} seconds or the game will be cancelled.
+            </p>
+            <div className="flex gap-4">
+              <button
+                onClick={handleJoinAsHost}
+                className="pixel-button flex-1"
+              >
+                JOIN GAME NOW
+              </button>
+              <button
+                onClick={() => {
+                  setShowHostNotification(false)
+                  setHostNotificationGameId(null)
+                  if (timerRef.current) {
+                    clearInterval(timerRef.current)
+                  }
+                }}
+                className="pixel-button flex-1"
+              >
+                CANCEL
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
       <div className="min-h-screen flex flex-col">
         <header className="p-2 sm:p-4 border-b-4 border-retro-green relative">
           <div className="max-w-7xl mx-auto flex items-center justify-between">
@@ -176,6 +270,14 @@ export default function Home() {
           <p>Built on Base Chain | Play at your own risk</p>
         </footer>
       </div>
+    </>
+  )
+}
+
+export default function Home() {
+  return (
+    <WalletProvider>
+      <HomeContent />
     </WalletProvider>
   )
 }
