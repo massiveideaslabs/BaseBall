@@ -61,25 +61,40 @@ export async function createGame(
   const contract = await getContract(signer)
   
   try {
-    // First, estimate gas to get a better error message if it fails
-    const gasEstimate = await contract.createGame.estimateGas(
-      difficulty,
-      expirationDurationSeconds,
-      {
-        value: wagerWei,
-      }
-    )
+    // Try to estimate gas first, but if it fails, we'll use a default gas limit
+    let gasLimit: bigint | undefined = undefined
     
-    console.log('Gas estimate:', gasEstimate.toString())
+    try {
+      const gasEstimate = await contract.createGame.estimateGas(
+        difficulty,
+        expirationDurationSeconds,
+        {
+          value: wagerWei,
+        }
+      )
+      console.log('Gas estimate:', gasEstimate.toString())
+      gasLimit = gasEstimate + (gasEstimate / BigInt(5)) // Add 20% buffer
+    } catch (estimateError: any) {
+      console.warn('Gas estimation failed, using default gas limit:', estimateError)
+      // If gas estimation fails, use a reasonable default (200k gas should be enough for createGame)
+      gasLimit = BigInt(200000)
+    }
     
-    // Now send the transaction
-    const tx = await contract.createGame(difficulty, expirationDurationSeconds, {
+    // Send the transaction
+    const txOptions: any = {
       value: wagerWei,
-      gasLimit: gasEstimate + BigInt(50000), // Add 20% buffer
-    })
+    }
+    
+    if (gasLimit) {
+      txOptions.gasLimit = gasLimit
+    }
+    
+    const tx = await contract.createGame(difficulty, expirationDurationSeconds, txOptions)
     await tx.wait()
     return tx
   } catch (error: any) {
+    console.error('Error in createGame:', error)
+    
     // Provide more helpful error messages
     if (error?.data) {
       // Try to decode the revert reason
@@ -92,12 +107,18 @@ export async function createGame(
     }
     
     // Check for common error patterns
-    if (error?.message?.includes('insufficient funds')) {
+    if (error?.message?.includes('insufficient funds') || error?.code === 'INSUFFICIENT_FUNDS') {
       throw new Error('Insufficient funds in your wallet')
     }
     
-    if (error?.message?.includes('user rejected')) {
+    if (error?.message?.includes('user rejected') || error?.code === 4001) {
       throw new Error('Transaction was cancelled')
+    }
+    
+    if (error?.message?.includes('missing revert data')) {
+      // This usually means the contract call would fail but RPC doesn't provide reason
+      // Try to provide helpful guidance
+      throw new Error('Transaction would fail. Please check: 1) Contract exists at address, 2) You have sufficient funds, 3) Parameters are valid (difficulty 1-10, expiration > 0)')
     }
     
     // Re-throw with original message
