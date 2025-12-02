@@ -31,6 +31,7 @@ class Logger {
     if (!this.enabled) return
 
     // Helper function to convert BigInt values to strings for JSON serialization
+    // Handles Proxy objects (like those returned by ethers.js)
     const convertBigInt = (obj: any): any => {
       if (obj === null || obj === undefined) {
         return obj
@@ -43,9 +44,32 @@ class Logger {
       }
       if (typeof obj === 'object') {
         const converted: any = {}
-        for (const key in obj) {
-          if (obj.hasOwnProperty(key)) {
-            converted[key] = convertBigInt(obj[key])
+        // Handle both regular objects and Proxy objects
+        try {
+          // Try to get all keys (works for both regular objects and Proxies)
+          const keys = Object.keys(obj)
+          for (const key of keys) {
+            try {
+              const value = obj[key]
+              converted[key] = convertBigInt(value)
+            } catch (e) {
+              // If we can't access the property, skip it
+              converted[key] = '[unable to access]'
+            }
+          }
+        } catch (e) {
+          // If Object.keys fails, try alternative approach
+          try {
+            for (const key in obj) {
+              try {
+                converted[key] = convertBigInt(obj[key])
+              } catch (err) {
+                converted[key] = '[unable to access]'
+              }
+            }
+          } catch (err2) {
+            // Last resort: convert to string
+            return String(obj)
           }
         }
         return converted
@@ -107,14 +131,15 @@ class Logger {
     const prefix = `[${entry.timestamp}] [${component}]`
     
     if (data) {
-      // Convert data for console output to avoid BigInt issues
-      let consoleData = data
-      try {
-        consoleData = convertBigInt(data)
-      } catch (error) {
-        // If conversion fails, use string representation
-        consoleData = { _conversionError: String(error), _raw: String(data) }
-      }
+      // Use the already-converted data for console output to avoid BigInt issues
+      // This ensures we never pass BigInt values to console.log
+      const consoleData = convertedData || (() => {
+        try {
+          return convertBigInt(data)
+        } catch (error) {
+          return { _conversionError: String(error), _raw: String(data) }
+        }
+      })()
       
       console[level === 'error' ? 'error' : level === 'warn' ? 'warn' : 'log'](
         `%c${prefix} ${message}`,
@@ -209,6 +234,14 @@ export function logGameState(
   account: string | null | undefined,
   gameData: any
 ) {
+  // Convert BigInt values to strings/numbers before logging
+  const safeWager = gameData?.wager 
+    ? (typeof gameData.wager === 'bigint' ? gameData.wager.toString() : String(gameData.wager))
+    : undefined
+  const safeDifficulty = gameData?.difficulty !== undefined
+    ? (typeof gameData.difficulty === 'bigint' ? Number(gameData.difficulty) : Number(gameData.difficulty))
+    : undefined
+  
   logger.info('GameState', `Game ${gameId} state transition`, {
     gameId,
     status,
@@ -218,8 +251,8 @@ export function logGameState(
     player: gameData?.player,
     isHost: gameData?.host?.toLowerCase() === account?.toLowerCase(),
     isPlayer: gameData?.player?.toLowerCase() === account?.toLowerCase(),
-    wager: gameData?.wager?.toString(),
-    difficulty: gameData?.difficulty
+    wager: safeWager,
+    difficulty: safeDifficulty
   })
 }
 
