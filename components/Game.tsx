@@ -66,8 +66,8 @@ export default function Game({ gameId, practiceMode = false, onExit }: GameProps
       setLoading(false)
     } else if (gameId && provider) {
       loadGame()
-    } else if (!gameId) {
-      // Creating new game
+    } else if (!gameId && !practiceMode) {
+      // No game ID and not practice mode - show error
       setLoading(false)
     }
   }, [gameId, provider, practiceMode])
