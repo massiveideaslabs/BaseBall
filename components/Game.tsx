@@ -438,6 +438,20 @@ export default function Game({ gameId, practiceMode = false, onExit }: GameProps
     return (
       <div className="flex items-center justify-center min-h-[600px]">
         <p className="text-retro-cyan text-xl">LOADING GAME...</p>
+        {gameId && <p className="text-sm text-retro-cyan mt-2 ml-2">Game ID: {gameId}</p>}
+      </div>
+    )
+  }
+
+  // Show error if gameId provided but no gameData loaded
+  if (gameId && !practiceMode && !gameData) {
+    return (
+      <div className="max-w-4xl mx-auto text-center py-20">
+        <p className="text-retro-yellow text-xl mb-4">GAME NOT FOUND</p>
+        <p className="text-retro-cyan mb-4">Unable to load game #{gameId}</p>
+        <button onClick={onExit} className="pixel-button">
+          BACK TO LOBBY
+        </button>
       </div>
     )
   }
