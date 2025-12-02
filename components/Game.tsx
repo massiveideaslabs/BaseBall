@@ -64,116 +64,124 @@ export default function Game({ gameId, practiceMode = false, onExit }: GameProps
   const loadGame = useCallback(async () => {
     if (!gameId || !provider) {
       logger.warn('Game', 'Cannot load game - missing gameId or provider', { gameId, hasProvider: !!provider })
-      return
-    }
-    
-    // Retry logic to handle blockchain state sync delays
-    let retries = 5
-    let data: GameData | null = null
-    
-    while (retries > 0 && !data) {
-      try {
-        logger.info('Game', 'Fetching game data from blockchain', { 
-          gameId, 
-          account,
-          retriesLeft: retries 
-        })
-        data = await getGame(provider, gameId)
-        logger.info('Game', 'Game data received', { 
-          gameId,
-          status: data.status,
-          host: data.host,
-          player: data.player,
-          wager: data.wager?.toString(),
-          difficulty: data.difficulty
-        })
-        break // Success, exit retry loop
-      } catch (error: any) {
-        logger.error('Game', 'Error loading game', error)
-        const errorMessage = error?.message || error?.toString() || 'Unknown error'
-        logger.error('Game', 'Error details', {
-          gameId,
-          errorMessage,
-          errorType: error?.constructor?.name,
-          retriesLeft: retries
-        })
-        
-        retries--
-        if (retries > 0) {
-          // Wait before retrying (exponential backoff)
-          const waitTime = (6 - retries) * 500 // 500ms, 1000ms, 1500ms, 2000ms
-          logger.info('Game', `Retrying in ${waitTime}ms...`, { gameId, retriesLeft: retries })
-          await new Promise(resolve => setTimeout(resolve, waitTime))
-        }
-      }
-    }
-    
-    if (!data) {
-      // All retries failed
-      logger.error('Game', 'Failed to load game after all retries', { gameId })
-      setGameData(null)
       setLoading(false)
       return
     }
     
-    // Convert status to number for comparison
-    const status = Number(data.status)
-    logGameState(gameId, status, account, data)
-    
-    setGameData(data)
-    setLoading(false)
-
-    // If game is active (status === 1) and player is part of it, check if both players are ready
-    if (status === 1) {
-      const isHost = data.host.toLowerCase() === account?.toLowerCase()
-      const isPlayer = data.player && data.player.toLowerCase() === account?.toLowerCase()
-      const playerAddress = data.player ? data.player.toLowerCase() : ''
-      const accountAddress = account?.toLowerCase() || ''
-      const hasPlayer = data.player && data.player !== '0x0000000000000000000000000000000000000000'
+    try {
+      // Retry logic to handle blockchain state sync delays
+      let retries = 5
+      let data: GameData | null = null
       
-      logger.info('Game', 'Game is Active - checking player participation', {
-        gameId,
-        status: status,
-        host: data.host.toLowerCase(),
-        player: playerAddress,
-        account: accountAddress,
-        isHost,
-        isPlayer,
-        hasPlayer
-      })
-      
-      if (isHost || isPlayer) {
-        // Both players must be present (hasPlayer = true) before starting
-        if (hasPlayer) {
-          // Both players are present - start the game
-          logger.info('Game', 'Both players present - initializing game', {
-            gameId,
-            difficulty: data.difficulty,
-            role: isHost ? 'host' : 'player'
+      while (retries > 0 && !data) {
+        try {
+          logger.info('Game', 'Fetching game data from blockchain', { 
+            gameId, 
+            account,
+            retriesLeft: retries 
           })
-          initializeGame(data.difficulty)
-        } else {
-          // Player hasn't joined yet - show waiting message
-          logger.info('Game', 'Waiting for other player to join', { 
+          data = await getGame(provider, gameId)
+          logger.info('Game', 'Game data received', { 
             gameId,
-            role: isHost ? 'host' : 'player'
+            status: data.status,
+            host: data.host,
+            player: data.player,
+            wager: data.wager?.toString(),
+            difficulty: data.difficulty
           })
-          // Don't initialize game yet, will show waiting message in render
+          break // Success, exit retry loop
+        } catch (error: any) {
+          logger.error('Game', 'Error loading game', error)
+          const errorMessage = error?.message || error?.toString() || 'Unknown error'
+          logger.error('Game', 'Error details', {
+            gameId,
+            errorMessage,
+            errorType: error?.constructor?.name,
+            retriesLeft: retries
+          })
+          
+          retries--
+          if (retries > 0) {
+            // Wait before retrying (exponential backoff)
+            const waitTime = (6 - retries) * 500 // 500ms, 1000ms, 1500ms, 2000ms
+            logger.info('Game', `Retrying in ${waitTime}ms...`, { gameId, retriesLeft: retries })
+            await new Promise(resolve => setTimeout(resolve, waitTime))
+          }
         }
-      } else {
-        logger.warn('Game', 'Game is active but current account is not host or player', {
-          gameId,
-          account,
-          host: data.host,
-          player: data.player
-        })
-        // If game is active but we're not in it, show waiting message
       }
-    } else if (status === 0) {
-      logger.info('Game', 'Game is still pending', { gameId, status: status })
-      // Game is still pending, will be handled by the status === 0 check below
-    } else {
-      logger.warn('Game', 'Unknown game status', { gameId, status: status })
+      
+      if (!data) {
+        // All retries failed
+        logger.error('Game', 'Failed to load game after all retries', { gameId })
+        setGameData(null)
+        setLoading(false)
+        return
+      }
+      
+      // Convert status to number for comparison
+      const status = Number(data.status)
+      logGameState(gameId, status, account, data)
+      
+      setGameData(data)
+      setLoading(false)
+
+      // If game is active (status === 1) and player is part of it, check if both players are ready
+      if (status === 1) {
+        const isHost = data.host.toLowerCase() === account?.toLowerCase()
+        const isPlayer = data.player && data.player.toLowerCase() === account?.toLowerCase()
+        const playerAddress = data.player ? data.player.toLowerCase() : ''
+        const accountAddress = account?.toLowerCase() || ''
+        const hasPlayer = data.player && data.player !== '0x0000000000000000000000000000000000000000'
+        
+        logger.info('Game', 'Game is Active - checking player participation', {
+          gameId,
+          status: status,
+          host: data.host.toLowerCase(),
+          player: playerAddress,
+          account: accountAddress,
+          isHost,
+          isPlayer,
+          hasPlayer
+        })
+        
+        if (isHost || isPlayer) {
+          // Both players must be present (hasPlayer = true) before starting
+          if (hasPlayer) {
+            // Both players are present - start the game
+            logger.info('Game', 'Both players present - initializing game', {
+              gameId,
+              difficulty: data.difficulty,
+              role: isHost ? 'host' : 'player'
+            })
+            initializeGame(data.difficulty)
+          } else {
+            // Player hasn't joined yet - show waiting message
+            logger.info('Game', 'Waiting for other player to join', { 
+              gameId,
+              role: isHost ? 'host' : 'player'
+            })
+            // Don't initialize game yet, will show waiting message in render
+          }
+        } else {
+          logger.warn('Game', 'Game is active but current account is not host or player', {
+            gameId,
+            account,
+            host: data.host,
+            player: data.player
+          })
+          // If game is active but we're not in it, show waiting message
+        }
+      } else if (status === 0) {
+        logger.info('Game', 'Game is still pending', { gameId, status: status })
+        // Game is still pending, will be handled by the status === 0 check below
+      } else {
+        logger.warn('Game', 'Unknown game status', { gameId, status: status })
+      }
+    } catch (error: any) {
+      // Catch any unexpected errors
+      logger.error('Game', 'Unexpected error in loadGame', error)
+      setGameData(null)
+      setLoading(false)
     }
   }, [gameId, provider, account])
 
@@ -193,33 +201,15 @@ export default function Game({ gameId, practiceMode = false, onExit }: GameProps
       logger.info('Game', 'Loading game from blockchain', { gameId })
       loadGame()
       
-      // Set up polling to check game state periodically when waiting for other player
-      const pollInterval = setInterval(async () => {
-        if (gameId && provider && gameData && gameData.status === 1 && !gameStarted) {
-          try {
-            const updatedGame = await getGame(provider, gameId)
-            const updatedStatus = Number(updatedGame.status)
-            const hasPlayer = updatedGame.player && updatedGame.player !== '0x0000000000000000000000000000000000000000'
-            
-            logger.info('Game', 'Polling game state', {
-              gameId,
-              status: updatedStatus,
-              hasPlayer,
-              gameStarted
-            })
-            
-            // If both players are now present and game hasn't started, reload game
-            if (updatedStatus === 1 && hasPlayer && !gameStarted) {
-              logger.info('Game', 'Both players detected - reloading game', { gameId })
-              loadGame()
-            }
-          } catch (error) {
-            logger.error('Game', 'Error polling game state', error)
-          }
+      // Set a timeout to ensure loading doesn't stay true forever
+      const loadingTimeout = setTimeout(() => {
+        if (loading) {
+          logger.warn('Game', 'Loading timeout - forcing loading to false', { gameId })
+          setLoading(false)
         }
-      }, 2000) // Poll every 2 seconds
+      }, 30000) // 30 second timeout
       
-      return () => clearInterval(pollInterval)
+      return () => clearTimeout(loadingTimeout)
     } else if (!gameId && !practiceMode) {
       // No game ID and not practice mode - show error
       logger.warn('Game', 'No gameId provided and not practice mode')
@@ -233,7 +223,7 @@ export default function Game({ gameId, practiceMode = false, onExit }: GameProps
     
     // Set up polling to check game state periodically when waiting for other player
     const pollInterval = setInterval(async () => {
-      if (gameId && provider && gameData && gameData.status === 1 && !gameStarted) {
+      if (gameId && provider && !gameStarted) {
         try {
           const updatedGame = await getGame(provider, gameId)
           const updatedStatus = Number(updatedGame.status)
@@ -243,12 +233,18 @@ export default function Game({ gameId, practiceMode = false, onExit }: GameProps
             gameId,
             status: updatedStatus,
             hasPlayer,
-            gameStarted
+            gameStarted,
+            hasGameData: !!gameData,
+            loading
           })
           
           // If both players are now present and game hasn't started, reload game
           if (updatedStatus === 1 && hasPlayer && !gameStarted) {
             logger.info('Game', 'Both players detected - reloading game', { gameId })
+            loadGame()
+          } else if (!gameData && updatedStatus === 1) {
+            // Game is active but we don't have game data yet - reload
+            logger.info('Game', 'Game active but no data - reloading', { gameId })
             loadGame()
           }
         } catch (error) {
@@ -258,7 +254,7 @@ export default function Game({ gameId, practiceMode = false, onExit }: GameProps
     }, 2000) // Poll every 2 seconds
     
     return () => clearInterval(pollInterval)
-  }, [gameId, provider, practiceMode, gameData, gameStarted, loadGame])
+  }, [gameId, provider, practiceMode, gameData, gameStarted, loadGame, loading])
 
   useEffect(() => {
     if (gameStarted && !gameOver) {
