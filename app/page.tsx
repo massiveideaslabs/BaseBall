@@ -115,19 +115,47 @@ function HomeContent() {
     }
   }, [account])
 
-  const handleJoinAsHost = () => {
-    if (hostNotificationGameId) {
-      logger.info('Page', 'Host joining game from notification', {
-        gameId: hostNotificationGameId,
-        account
-      })
-      setSelectedGameId(hostNotificationGameId)
-      setCurrentView('game')
-      setShowHostNotification(false)
-      setHostNotificationGameId(null)
-      if (timerRef.current) {
-        clearInterval(timerRef.current)
+  const handleJoinAsHost = async () => {
+    if (!hostNotificationGameId) return
+    
+    logger.info('Page', 'Host joining game from notification', {
+      gameId: hostNotificationGameId,
+      gameIdType: typeof hostNotificationGameId,
+      account
+    })
+    
+    // Validate game exists before navigating
+    if (provider) {
+      try {
+        const { getGame } = await import('@/lib/contract')
+        const gameData = await getGame(provider, hostNotificationGameId)
+        logger.info('Page', 'Game validated before host navigation', {
+          gameId: hostNotificationGameId,
+          status: Number(gameData.status),
+          host: gameData.host,
+          player: gameData.player
+        })
+      } catch (error) {
+        logger.error('Page', 'Game not found when host tries to join', {
+          gameId: hostNotificationGameId,
+          error
+        })
+        alert('Game not found. It may have been cancelled or expired.')
+        setShowHostNotification(false)
+        setHostNotificationGameId(null)
+        if (timerRef.current) {
+          clearInterval(timerRef.current)
+        }
+        return
       }
+    }
+    
+    setSelectedGameId(hostNotificationGameId)
+    setCurrentView('game')
+    setShowHostNotification(false)
+    setHostNotificationGameId(null)
+    if (timerRef.current) {
+      clearInterval(timerRef.current)
     }
   }
 
