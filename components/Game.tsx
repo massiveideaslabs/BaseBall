@@ -84,20 +84,44 @@ export default function Game({ gameId, practiceMode = false, onExit }: GameProps
           
           // Validate that we got valid game data
           // Non-existent games will have gameId = 0 and host = zero address
+          const receivedGameId = data?.gameId ? Number(data.gameId) : null
+          const hasValidHost = data?.host && data.host !== '0x0000000000000000000000000000000000000000'
+          const gameIdMatches = receivedGameId === gameId
+          
           if (!data || 
-              !data.host || 
-              data.host === '0x0000000000000000000000000000000000000000' ||
+              !hasValidHost ||
               data.gameId === 0n ||
-              Number(data.gameId) !== gameId) {
+              !gameIdMatches) {
             logger.warn('Game', 'Invalid game data received - game may not exist', {
               gameId,
-              receivedGameId: data?.gameId ? Number(data.gameId) : null,
-              hasHost: !!data?.host,
+              receivedGameId,
+              hasValidHost,
               host: data?.host,
-              gameIdMatches: data?.gameId ? Number(data.gameId) === gameId : false
+              gameIdMatches,
+              account: account?.substring(0, 10) + '...'
             })
             // Treat as error and retry (might be blockchain sync delay)
             throw new Error('Invalid game data - game may not exist or blockchain state not synced')
+          }
+          
+          // Additional validation: if game is Active, verify current account is either host or player
+          const status = Number(data.status)
+          if (status === 1 && account) {
+            const isHost = data.host.toLowerCase() === account.toLowerCase()
+            const isPlayer = data.player && data.player.toLowerCase() === account.toLowerCase()
+            const hasPlayer = data.player && data.player !== '0x0000000000000000000000000000000000000000'
+            
+            // If game is Active and has a player, but current account is neither host nor player, 
+            // this might be a timing issue - allow it but log a warning
+            if (hasPlayer && !isHost && !isPlayer) {
+              logger.warn('Game', 'Game is Active but account is not host or player - might be timing issue', {
+                gameId,
+                account: account.substring(0, 10) + '...',
+                host: data.host.substring(0, 10) + '...',
+                player: data.player ? data.player.substring(0, 10) + '...' : 'none'
+              })
+              // Don't throw error - allow retry to handle timing issues
+            }
           }
           
           logger.info('Game', 'Game data received', { 
@@ -206,23 +230,31 @@ export default function Game({ gameId, practiceMode = false, onExit }: GameProps
             logger.info('Game', 'Both players present - initializing game', {
               gameId,
               difficulty: difficultyNumber,
-              role: isHost ? 'host' : 'player'
+              role: isHost ? 'host' : 'player',
+              host: data.host,
+              player: data.player,
+              account: account?.substring(0, 10) + '...'
             })
+            // Initialize game immediately
             initializeGame(difficultyNumber)
           } else {
             // Player hasn't joined yet - show waiting message
             logger.info('Game', 'Waiting for other player to join', { 
               gameId,
-              role: isHost ? 'host' : 'player'
+              role: isHost ? 'host' : 'player',
+              host: data.host,
+              player: data.player || 'none'
             })
             // Don't initialize game yet, will show waiting message in render
           }
         } else {
           logger.warn('Game', 'Game is active but current account is not host or player', {
             gameId,
-            account,
+            account: account?.substring(0, 10) + '...',
             host: data.host,
-            player: data.player
+            player: data.player,
+            isHost,
+            isPlayer
           })
           // If game is active but we're not in it, show waiting message
         }
@@ -302,18 +334,37 @@ export default function Game({ gameId, practiceMode = false, onExit }: GameProps
           const updatedGame = await getGame(provider, gameId)
           const updatedStatus = Number(updatedGame.status)
           const hasPlayer = updatedGame.player && updatedGame.player !== '0x0000000000000000000000000000000000000000'
+          const isHost = updatedGame.host.toLowerCase() === account?.toLowerCase()
+          const isPlayer = updatedGame.player && updatedGame.player.toLowerCase() === account?.toLowerCase()
           
           logger.info('Game', 'Polling game state', {
             gameId,
             status: updatedStatus,
             hasPlayer,
+            isHost,
+            isPlayer,
             gameStarted,
             hasGameData: !!gameData,
-            loading
+            loading,
+            account: account?.substring(0, 10) + '...'
           })
           
-          // If both players are now present and game hasn't started, reload game
-          if (updatedStatus === 1 && hasPlayer && !gameStarted) {
+          // If both players are now present and game hasn't started, initialize game directly
+          if (updatedStatus === 1 && hasPlayer && (isHost || isPlayer) && !gameStarted) {
+            logger.info('Game', 'Both players detected - initializing game directly', { 
+              gameId,
+              role: isHost ? 'host' : 'player'
+            })
+            // Convert difficulty and initialize game directly
+            const difficultyNumber = typeof updatedGame.difficulty === 'bigint' 
+              ? Number(updatedGame.difficulty) 
+              : Number(updatedGame.difficulty)
+            initializeGame(difficultyNumber)
+            // Update game data
+            setGameData(updatedGame)
+            setLoading(false)
+          } else if (updatedStatus === 1 && hasPlayer && !gameStarted) {
+            // Both players present but we're not one of them - reload to get updated state
             logger.info('Game', 'Both players detected - reloading game', { gameId })
             loadGame()
           } else if (!gameData && updatedStatus === 1) {
@@ -328,7 +379,7 @@ export default function Game({ gameId, practiceMode = false, onExit }: GameProps
     }, 2000) // Poll every 2 seconds
     
     return () => clearInterval(pollInterval)
-  }, [gameId, provider, practiceMode, gameData, gameStarted, loadGame, loading])
+  }, [gameId, provider, practiceMode, gameData, gameStarted, loadGame, loading, account])
 
   useEffect(() => {
     if (gameStarted && !gameOver) {
@@ -807,50 +858,43 @@ export default function Game({ gameId, practiceMode = false, onExit }: GameProps
   }
   
   // Show waiting message if game is Active but not started yet
+  // BUT only if we're actually waiting - if both players are present, the polling should start the game
   if (gameData && gameData.status === 1 && !gameStarted) {
     const isHost = gameData.host.toLowerCase() === account?.toLowerCase()
     const isPlayer = gameData.player && gameData.player.toLowerCase() === account?.toLowerCase()
     const hasPlayer = gameData.player && gameData.player !== '0x0000000000000000000000000000000000000000'
     
-    logger.info('Game', 'Active game but not started - showing waiting message', {
+    logger.info('Game', 'Active game but not started - checking if should show waiting message', {
       gameId,
       status: gameData.status,
-      account,
-      host: gameData.host,
-      player: gameData.player,
+      account: account?.substring(0, 10) + '...',
+      host: gameData.host.substring(0, 10) + '...',
+      player: gameData.player ? gameData.player.substring(0, 10) + '...' : 'none',
       isHost,
       isPlayer,
       hasPlayer,
       gameStarted
     })
     
-    if (isHost && hasPlayer) {
-      // Host is here, player has joined - should start soon
+    // If both players are present and we're one of them, don't show waiting message
+    // The polling mechanism should start the game soon - show "Starting game..." instead
+    if (hasPlayer && (isHost || isPlayer)) {
+      // Both players are present - game should start via polling
+      // Show a brief "Starting game..." message instead of waiting
       return (
         <div className="max-w-4xl mx-auto">
           <div className="pixel-border p-8 text-center">
-            <h2 className="text-3xl mb-4">WAITING FOR PLAYER</h2>
-            <p className="mb-6">The other player has joined. Game will start shortly...</p>
+            <h2 className="text-3xl mb-4">STARTING GAME...</h2>
+            <p className="mb-6">Both players are ready. Game will start momentarily...</p>
             <button onClick={onExit} className="pixel-button">
               BACK TO LOBBY
             </button>
           </div>
         </div>
       )
-    } else if (isPlayer && hasPlayer) {
-      // Player is here, waiting for host to join
-      return (
-        <div className="max-w-4xl mx-auto">
-          <div className="pixel-border p-8 text-center">
-            <h2 className="text-3xl mb-4">WAITING FOR OTHER PLAYER</h2>
-            <p className="mb-6">You've joined the game. Waiting for the other player to join...</p>
-            <button onClick={onExit} className="pixel-button">
-              BACK TO LOBBY
-            </button>
-          </div>
-        </div>
-      )
-    } else if (isHost && !hasPlayer) {
+    }
+    
+    if (isHost && !hasPlayer) {
       // Host is here but player hasn't joined yet
       return (
         <div className="max-w-4xl mx-auto">
