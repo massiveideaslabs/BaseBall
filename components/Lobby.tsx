@@ -541,8 +541,34 @@ export default function Lobby({ onJoinGame, onCreateGame, onPracticeMode }: Lobb
                     }
                     // Navigate to game now that we've verified it's active
                     // Add a small delay to ensure blockchain state is fully synced
-                    logger.info('Lobby', 'Navigating to game', { gameId })
-                    await new Promise(resolve => setTimeout(resolve, 500)) // Small delay for state sync
+                    logger.info('Lobby', 'Navigating to game', { 
+                      gameId,
+                      gameIdType: typeof gameId,
+                      gameIdValue: gameId
+                    })
+                    await new Promise(resolve => setTimeout(resolve, 2000)) // Increased delay for state sync
+                    
+                    // Double-check game exists before navigating
+                    try {
+                      const finalCheck = await getGame(provider, gameId)
+                      logger.info('Lobby', 'Final check before navigation', {
+                        gameId,
+                        status: Number(finalCheck.status),
+                        host: finalCheck.host,
+                        player: finalCheck.player
+                      })
+                    } catch (error) {
+                      logger.error('Lobby', 'Game not found in final check before navigation', {
+                        gameId,
+                        error: error
+                      })
+                      alert('Game not found. Please try refreshing the page.')
+                      setShowJoinConfirm(false)
+                      setGameToJoin(null)
+                      await loadGames()
+                      return
+                    }
+                    
                     onJoinGame(gameId)
                     setGameToJoin(null)
                   } catch (error: any) {

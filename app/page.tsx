@@ -274,7 +274,11 @@ function HomeContent() {
           {currentView === 'lobby' && (
             <Lobby 
               onJoinGame={(gameId) => {
-                logger.info('Page', 'Navigating to game from lobby', { gameId })
+                logger.info('Page', 'Navigating to game from lobby', { 
+                  gameId,
+                  gameIdType: typeof gameId,
+                  gameIdValue: gameId
+                })
                 setSelectedGameId(gameId)
                 setCurrentView('game')
               }}
