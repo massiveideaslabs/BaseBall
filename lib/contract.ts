@@ -21,6 +21,16 @@ export interface PlayerStats {
 }
 
 export async function getContract(signer: ethers.JsonRpcSigner) {
+  if (!CONTRACT_ADDRESS) {
+    throw new Error('Contract address not configured. Please set NEXT_PUBLIC_CONTRACT_ADDRESS environment variable.')
+  }
+  
+  // Verify contract exists by checking code
+  const code = await signer.provider.getCode(CONTRACT_ADDRESS)
+  if (code === '0x') {
+    throw new Error(`No contract found at address ${CONTRACT_ADDRESS}. Please verify the contract address is correct.`)
+  }
+  
   return new ethers.Contract(CONTRACT_ADDRESS, BaseBallABI, signer)
 }
 
