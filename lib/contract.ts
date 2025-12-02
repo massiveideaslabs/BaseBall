@@ -201,9 +201,15 @@ export async function getGame(
   try {
     const game = await contract.getGame(gameId)
     
-    // Validate that the game exists (non-existent games will have gameId = 0 and host = zero address)
-    // Check both gameId and host to be sure
-    if (game.gameId === 0n || game.host === '0x0000000000000000000000000000000000000000') {
+    // Validate that the game exists
+    // Non-existent games will have gameId = 0 and host = zero address
+    // Also verify the returned gameId matches the requested one
+    const returnedGameId = Number(game.gameId)
+    if (
+      game.gameId === 0n || 
+      game.host === '0x0000000000000000000000000000000000000000' ||
+      returnedGameId !== gameId
+    ) {
       throw new Error(`Game ${gameId} does not exist`)
     }
     
