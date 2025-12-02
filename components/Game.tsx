@@ -202,7 +202,8 @@ export default function Game({ gameId, practiceMode = false, onExit }: GameProps
       gameId,
       practiceMode,
       hasProvider: !!provider,
-      account
+      hasAccount: !!account,
+      account: account?.substring(0, 10) + '...' // Log partial address for privacy
     })
     
     if (practiceMode) {
@@ -210,13 +211,21 @@ export default function Game({ gameId, practiceMode = false, onExit }: GameProps
       logger.info('Game', 'Practice mode enabled')
       setLoading(false)
     } else if (gameId && provider) {
-      logger.info('Game', 'Loading game from blockchain', { gameId })
+      logger.info('Game', 'Loading game from blockchain', { 
+        gameId,
+        gameIdType: typeof gameId,
+        providerReady: !!provider
+      })
       loadGame()
       
       // Set a timeout to ensure loading doesn't stay true forever
       const loadingTimeout = setTimeout(() => {
         if (loading) {
-          logger.warn('Game', 'Loading timeout - forcing loading to false', { gameId })
+          logger.warn('Game', 'Loading timeout - forcing loading to false', { 
+            gameId,
+            hasGameData: !!gameData,
+            gameDataStatus: gameData?.status
+          })
           setLoading(false)
         }
       }, 30000) // 30 second timeout
@@ -224,10 +233,20 @@ export default function Game({ gameId, practiceMode = false, onExit }: GameProps
       return () => clearTimeout(loadingTimeout)
     } else if (!gameId && !practiceMode) {
       // No game ID and not practice mode - show error
-      logger.warn('Game', 'No gameId provided and not practice mode')
+      logger.warn('Game', 'No gameId provided and not practice mode', {
+        gameId,
+        practiceMode
+      })
+      setLoading(false)
+    } else {
+      logger.warn('Game', 'Missing requirements for loading game', {
+        hasGameId: !!gameId,
+        hasProvider: !!provider,
+        practiceMode
+      })
       setLoading(false)
     }
-  }, [gameId, provider, account, practiceMode])
+  }, [gameId, provider, account, practiceMode, loading, gameData])
 
   // Poll game state when waiting for other player
   useEffect(() => {
