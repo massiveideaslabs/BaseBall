@@ -336,16 +336,6 @@ export function WalletProvider({ children }: { children: ReactNode }) {
         console.log('WalletConnect URI generated:', uri.substring(0, 50) + '...')
       })
 
-      // Listen for session_request event
-      wcProvider.on('session_request', (event: any) => {
-        console.log('WalletConnect session_request event:', event)
-      })
-
-      // Listen for session_proposal event
-      wcProvider.on('session_proposal', (event: any) => {
-        console.log('WalletConnect session_proposal event:', event)
-      })
-
       // Check if already connected
       if (wcProvider.session) {
         // Already have a session, use it
