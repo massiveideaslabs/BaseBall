@@ -381,7 +381,6 @@ export function WalletProvider({ children }: { children: ReactNode }) {
           clearTimeout(timeout)
           window.removeEventListener('focus', checkOnFocus)
           wcProvider.off('connect', handleConnect)
-          wcProvider.off('session_connect', handleConnect)
           wcProvider.off('accountsChanged', handleAccountsChanged)
         }
 
@@ -405,7 +404,6 @@ export function WalletProvider({ children }: { children: ReactNode }) {
 
         // Set up event listeners
         wcProvider.on('connect', handleConnect)
-        wcProvider.on('session_connect', handleConnect)
         
         // Also listen for accountsChanged as a backup
         const handleAccountsChanged = (accounts: string[]) => {
