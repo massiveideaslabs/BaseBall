@@ -30,12 +30,35 @@ class Logger {
   private addLog(level: LogLevel, component: string, message: string, data?: any) {
     if (!this.enabled) return
 
+    // Helper function to convert BigInt values to strings for JSON serialization
+    const convertBigInt = (obj: any): any => {
+      if (obj === null || obj === undefined) {
+        return obj
+      }
+      if (typeof obj === 'bigint') {
+        return obj.toString()
+      }
+      if (Array.isArray(obj)) {
+        return obj.map(convertBigInt)
+      }
+      if (typeof obj === 'object') {
+        const converted: any = {}
+        for (const key in obj) {
+          if (obj.hasOwnProperty(key)) {
+            converted[key] = convertBigInt(obj[key])
+          }
+        }
+        return converted
+      }
+      return obj
+    }
+
     const entry: LogEntry = {
       timestamp: new Date().toISOString(),
       level,
       component,
       message,
-      data: data ? JSON.parse(JSON.stringify(data)) : undefined,
+      data: data ? JSON.parse(JSON.stringify(convertBigInt(data))) : undefined,
       stack: level === 'error' && data?.stack ? data.stack : undefined
     }
 
