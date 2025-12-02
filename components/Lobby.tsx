@@ -407,7 +407,7 @@ export default function Lobby({ onJoinGame, onCreateGame, onPracticeMode }: Lobb
                         Game #{Number(game.gameId)}
                       </span>
                       <span className="text-retro-yellow">
-                        Difficulty: {game.difficulty}/10
+                        Difficulty: {Number(game.difficulty) || 0}/10
                       </span>
                       <span className="text-retro-green">
                         Wager: {formatEther(game.wager)} ETH
