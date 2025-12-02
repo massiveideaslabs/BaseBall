@@ -6,18 +6,34 @@ const cors = require('cors');
 const app = express();
 
 // CORS configuration
-const allowedOrigins = process.env.CLIENT_URL 
-  ? [process.env.CLIENT_URL, "http://localhost:3000"]
-  : ["http://localhost:3000"];
+// Support multiple client URLs (comma-separated) or single CLIENT_URL
+const clientUrls = process.env.CLIENT_URL 
+  ? process.env.CLIENT_URL.split(',').map(url => url.trim())
+  : [];
+const allowedOrigins = [
+  ...clientUrls,
+  "http://localhost:3000",
+  "https://base-ball-ten.vercel.app", // Add Vercel deployment URL
+  "https://base-ball-ten.vercel.app/", // With trailing slash
+];
+
+console.log('[SERVER] Allowed CORS origins:', allowedOrigins);
 
 app.use(cors({
   origin: function (origin, callback) {
     // Allow requests with no origin (like mobile apps or curl requests)
-    if (!origin) return callback(null, true);
+    if (!origin) {
+      console.log('[SERVER] Request with no origin - allowing');
+      return callback(null, true);
+    }
+    console.log('[SERVER] CORS check for origin:', origin);
     if (allowedOrigins.indexOf(origin) !== -1) {
+      console.log('[SERVER] Origin allowed:', origin);
       callback(null, true);
     } else {
-      callback(new Error('Not allowed by CORS'));
+      console.log('[SERVER] Origin NOT allowed:', origin);
+      console.log('[SERVER] Allowed origins:', allowedOrigins);
+      callback(new Error(`Not allowed by CORS. Origin: ${origin}`));
     }
   },
   credentials: true
@@ -26,7 +42,21 @@ app.use(cors({
 const server = http.createServer(app);
 const io = new Server(server, {
   cors: {
-    origin: allowedOrigins,
+    origin: function (origin, callback) {
+      // Allow requests with no origin
+      if (!origin) {
+        console.log('[SERVER] Socket.io connection with no origin - allowing');
+        return callback(null, true);
+      }
+      console.log('[SERVER] Socket.io CORS check for origin:', origin);
+      if (allowedOrigins.indexOf(origin) !== -1) {
+        console.log('[SERVER] Socket.io origin allowed:', origin);
+        callback(null, true);
+      } else {
+        console.log('[SERVER] Socket.io origin NOT allowed:', origin);
+        callback(new Error(`Not allowed by CORS. Origin: ${origin}`));
+      }
+    },
     methods: ["GET", "POST"],
     credentials: true
   }
