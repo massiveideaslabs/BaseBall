@@ -77,6 +77,12 @@ export default function Lobby({ onJoinGame, onCreateGame, onPracticeMode }: Lobb
     try {
       const pendingGames = await getAllPendingGames(provider)
       
+      // Debug: log game data to check structure
+      if (pendingGames.length > 0) {
+        console.log('Sample game data:', pendingGames[0])
+        console.log('Difficulty value:', pendingGames[0].difficulty, 'Type:', typeof pendingGames[0].difficulty)
+      }
+      
       // Check for expired games and auto-cancel them
       const now = Math.floor(Date.now() / 1000)
       for (const game of pendingGames) {
