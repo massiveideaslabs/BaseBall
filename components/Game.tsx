@@ -131,13 +131,26 @@ export default function Game({ gameId, practiceMode = false, onExit }: GameProps
   const loadGame = async () => {
     if (!gameId || !provider) return
     try {
+      console.log('Loading game:', gameId)
       const data = await getGame(provider, gameId)
+      console.log('Game data loaded:', data)
       setGameData(data)
       setLoading(false)
 
-      // If game is active and player is part of it, start the game
-      if (data.status === 1 && (data.host.toLowerCase() === account?.toLowerCase() || data.player.toLowerCase() === account?.toLowerCase())) {
-        initializeGame(data.difficulty)
+      // If game is active (status === 1) and player is part of it, start the game
+      if (data.status === 1) {
+        const isHost = data.host.toLowerCase() === account?.toLowerCase()
+        const isPlayer = data.player && data.player.toLowerCase() === account?.toLowerCase()
+        console.log('Game status:', data.status, 'Is host:', isHost, 'Is player:', isPlayer)
+        
+        if (isHost || isPlayer) {
+          console.log('Initializing game with difficulty:', data.difficulty)
+          initializeGame(data.difficulty)
+        } else {
+          console.log('Player not part of this game yet')
+        }
+      } else {
+        console.log('Game not active yet, status:', data.status)
       }
     } catch (error) {
       console.error('Error loading game:', error)
@@ -163,6 +176,9 @@ export default function Game({ gameId, practiceMode = false, onExit }: GameProps
     if (!gameId || !signer || !gameData) return
     try {
       await joinGame(signer, gameId, ethers.formatEther(gameData.wager))
+      // Wait a moment for blockchain to update
+      await new Promise(resolve => setTimeout(resolve, 1000))
+      // Reload game data to get updated status
       await loadGame()
     } catch (error: any) {
       alert(error.message || 'Failed to join game')

@@ -335,14 +335,21 @@ export default function Lobby({ onJoinGame, onCreateGame, onPracticeMode }: Lobb
                   try {
                     setJoining(true)
                     const wagerAmount = ethers.formatEther(gameToJoin.wager)
-                    await joinGame(signer, Number(gameToJoin.gameId), wagerAmount)
+                    const gameId = Number(gameToJoin.gameId)
+                    await joinGame(signer, gameId, wagerAmount)
                     setShowJoinConfirm(false)
-                    // Emit socket event for real-time update
+                    // Emit socket event for real-time update and host notification
                     if (socketRef.current) {
-                      socketRef.current.emit('game-joined', { gameId: Number(gameToJoin.gameId) })
+                      socketRef.current.emit('game-joined', { 
+                        gameId,
+                        host: gameToJoin.host,
+                        player: account
+                      })
                     }
-                    // Navigate to game
-                    onJoinGame(Number(gameToJoin.gameId))
+                    // Wait a moment for blockchain to update, then navigate to game
+                    setTimeout(() => {
+                      onJoinGame(gameId)
+                    }, 1000)
                     setGameToJoin(null)
                   } catch (error: any) {
                     console.error('Error joining game:', error)

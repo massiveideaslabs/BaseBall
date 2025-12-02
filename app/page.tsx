@@ -54,30 +54,42 @@ function HomeContent() {
     const socket = io(gameServerUrl)
     socketRef.current = socket
 
-    socket.on('player-joined-game', (data: { gameId: number }) => {
+    socket.on('player-joined-game', (data: { gameId: number; host: string; player: string }) => {
       // Check if this user is the host of this game
-      // We'll need to verify this in the server or check game data
-      console.log('Player joined game:', data.gameId)
-      setHostNotificationGameId(data.gameId)
-      setShowHostNotification(true)
-      setHostNotificationTimer(60)
+      console.log('Player joined game event:', data)
+      console.log('Current account:', account)
+      console.log('Game host:', data.host)
       
-      // Start countdown timer
-      timerRef.current = setInterval(() => {
-        setHostNotificationTimer((prev) => {
-          if (prev <= 1) {
-            // Time's up - cancel the game
-            if (timerRef.current) {
-              clearInterval(timerRef.current)
+      if (data.host && account && data.host.toLowerCase() === account.toLowerCase()) {
+        console.log('User is the host! Showing notification...')
+        setHostNotificationGameId(data.gameId)
+        setShowHostNotification(true)
+        setHostNotificationTimer(60)
+        
+        // Clear any existing timer
+        if (timerRef.current) {
+          clearInterval(timerRef.current)
+        }
+        
+        // Start countdown timer
+        timerRef.current = setInterval(() => {
+          setHostNotificationTimer((prev) => {
+            if (prev <= 1) {
+              // Time's up - cancel the game
+              if (timerRef.current) {
+                clearInterval(timerRef.current)
+              }
+              setShowHostNotification(false)
+              setHostNotificationGameId(null)
+              // TODO: Auto-cancel game if host doesn't join
+              return 0
             }
-            setShowHostNotification(false)
-            setHostNotificationGameId(null)
-            // TODO: Auto-cancel game if host doesn't join
-            return 0
-          }
-          return prev - 1
-        })
-      }, 1000)
+            return prev - 1
+          })
+        }, 1000)
+      } else {
+        console.log('User is not the host, ignoring notification')
+      }
     })
 
     return () => {
