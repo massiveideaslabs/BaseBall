@@ -81,14 +81,26 @@ export default function Game({ gameId, practiceMode = false, onExit }: GameProps
             retriesLeft: retries 
           })
           data = await getGame(provider, gameId)
-        logger.info('Game', 'Game data received', { 
-          gameId,
-          status: Number(data.status),
-          host: data.host,
-          player: data.player,
-          wager: data.wager?.toString(),
-          difficulty: Number(data.difficulty)
-        })
+          
+          // Validate that we got valid game data (host should not be zero address)
+          if (!data || !data.host || data.host === '0x0000000000000000000000000000000000000000') {
+            logger.warn('Game', 'Invalid game data received - game may not exist', {
+              gameId,
+              hasHost: !!data?.host,
+              host: data?.host
+            })
+            // Treat as error and retry
+            throw new Error('Invalid game data - game may not exist')
+          }
+          
+          logger.info('Game', 'Game data received', { 
+            gameId,
+            status: Number(data.status),
+            host: data.host,
+            player: data.player,
+            wager: data.wager?.toString(),
+            difficulty: Number(data.difficulty)
+          })
           break // Success, exit retry loop
         } catch (error: any) {
           logger.error('Game', 'Error loading game', error)
@@ -103,7 +115,7 @@ export default function Game({ gameId, practiceMode = false, onExit }: GameProps
           retries--
           if (retries > 0) {
             // Wait before retrying (exponential backoff)
-            const waitTime = (6 - retries) * 500 // 500ms, 1000ms, 1500ms, 2000ms
+            const waitTime = (6 - retries) * 1000 // 1000ms, 2000ms, 3000ms, 4000ms (increased wait times)
             logger.info('Game', `Retrying in ${waitTime}ms...`, { gameId, retriesLeft: retries })
             await new Promise(resolve => setTimeout(resolve, waitTime))
           }
