@@ -5,6 +5,8 @@ import { useWallet } from '@/contexts/WalletContext'
 import { getGame, joinGame, cancelGame, completeGame, Game as GameData } from '@/lib/contract'
 import { ethers } from 'ethers'
 import { logger, logGameState } from '@/lib/logger'
+import { getSocket, disconnectSocket } from '@/lib/socket'
+import { Socket } from 'socket.io-client'
 
 interface GameProps {
   gameId: number | null
@@ -60,6 +62,12 @@ export default function Game({ gameId, practiceMode = false, onExit }: GameProps
 
   const mouseYRef = useRef<number>(CANVAS_HEIGHT / 2)
   const keysRef = useRef<{ up: boolean; down: boolean }>({ up: false, down: false })
+  const socketRef = useRef<Socket | null>(null)
+  const isHostRef = useRef<boolean>(false)
+  const lastPaddleUpdateRef = useRef<number>(0)
+  const lastBallUpdateRef = useRef<number>(0)
+  const PADDLE_UPDATE_INTERVAL = 16 // ~60fps
+  const BALL_UPDATE_INTERVAL = 33 // ~30fps for ball sync
 
   const loadGame = useCallback(async () => {
     if (!gameId || !provider) {
@@ -436,8 +444,60 @@ export default function Game({ gameId, practiceMode = false, onExit }: GameProps
       }
     }
   }, [gameStarted, gameOver])
+  
+  // Cleanup socket on unmount
+  useEffect(() => {
+    return () => {
+      if (socketRef.current) {
+        socketRef.current.removeAllListeners()
+        socketRef.current.disconnect()
+        socketRef.current = null
+      }
+    }
+  }, [])
 
   const initializeGame = (difficulty: number) => {
+    // Determine if this player is the host
+    if (gameData && account) {
+      isHostRef.current = gameData.host.toLowerCase() === account.toLowerCase()
+    }
+    
+    // Connect to socket and join game room
+    if (!practiceMode && gameId) {
+      const socket = getSocket()
+      socketRef.current = socket
+      
+      // Join the game room
+      socket.emit('join-game', gameId)
+      logger.info('Game', 'Joined game room via socket', { gameId, isHost: isHostRef.current })
+      
+      // Listen for opponent paddle movements
+      socket.on('opponent-paddle', (data: { y: number }) => {
+        if (isHostRef.current) {
+          // Host controls left paddle, so opponent controls right paddle
+          rightPaddleRef.current.y = data.y
+        } else {
+          // Player controls right paddle, so opponent controls left paddle
+          leftPaddleRef.current.y = data.y
+        }
+      })
+      
+      // Listen for ball synchronization (if not authoritative)
+      socket.on('ball-sync', (ball: Ball) => {
+        // Player receives authoritative ball updates from host
+        if (!isHostRef.current) {
+          // Override local ball position with authoritative update
+          ballRef.current = { ...ball }
+        }
+      })
+      
+      // Listen for score synchronization
+      socket.on('score-sync', (scores: { left: number; right: number }) => {
+        setScore(scores)
+        scoreRef.current = scores
+      })
+    }
+    
     // Base speed increases with difficulty (1-10)
     const baseSpeed = 2 + (difficulty * 0.5)
     const angle = (Math.random() * Math.PI / 3) - Math.PI / 6 // -30 to 30 degrees
@@ -504,24 +564,47 @@ export default function Game({ gameId, practiceMode = false, onExit }: GameProps
     const canvas = canvasRef.current
     if (!canvas) return
 
-    // Left paddle (mouse/keyboard control)
+    // Determine which paddle this player controls
+    // Host controls left paddle, player controls right paddle
+    const isHost = isHostRef.current
+    const controlledPaddle = isHost ? leftPaddleRef : rightPaddleRef
+    
+    // Update controlled paddle based on input
     const targetY = mouseYRef.current - PADDLE_HEIGHT / 2
+    let newY = controlledPaddle.current.y
+    
     if (keysRef.current.up) {
-      leftPaddleRef.current.y = Math.max(0, leftPaddleRef.current.y - PADDLE_SPEED)
+      newY = Math.max(0, controlledPaddle.current.y - PADDLE_SPEED)
     } else if (keysRef.current.down) {
-      leftPaddleRef.current.y = Math.min(CANVAS_HEIGHT - PADDLE_HEIGHT, leftPaddleRef.current.y + PADDLE_SPEED)
+      newY = Math.min(CANVAS_HEIGHT - PADDLE_HEIGHT, controlledPaddle.current.y + PADDLE_SPEED)
     } else {
-      leftPaddleRef.current.y = Math.max(0, Math.min(CANVAS_HEIGHT - PADDLE_HEIGHT, targetY))
+      newY = Math.max(0, Math.min(CANVAS_HEIGHT - PADDLE_HEIGHT, targetY))
     }
-
-    // Right paddle (AI for now - in multiplayer, this would be controlled by opponent)
-    const ball = ballRef.current
-    const rightPaddle = rightPaddleRef.current
-    const paddleCenter = rightPaddle.y + PADDLE_HEIGHT / 2
-    if (ball.y < paddleCenter - 10) {
-      rightPaddle.y = Math.max(0, rightPaddle.y - PADDLE_SPEED)
-    } else if (ball.y > paddleCenter + 10) {
-      rightPaddle.y = Math.min(CANVAS_HEIGHT - PADDLE_HEIGHT, rightPaddle.y + PADDLE_SPEED)
+    
+    controlledPaddle.current.y = newY
+    
+    // Send paddle position to server for opponent
+    if (!practiceMode && gameId && socketRef.current) {
+      const now = Date.now()
+      if (now - lastPaddleUpdateRef.current >= PADDLE_UPDATE_INTERVAL) {
+        socketRef.current.emit('paddle-move', {
+          gameId,
+          y: newY
+        })
+        lastPaddleUpdateRef.current = now
+      }
+    }
+    
+    // In practice mode, use AI for the opponent paddle
+    if (practiceMode) {
+      const ball = ballRef.current
+      const opponentPaddle = isHost ? rightPaddleRef : leftPaddleRef
+      const paddleCenter = opponentPaddle.current.y + PADDLE_HEIGHT / 2
+      if (ball.y < paddleCenter - 10) {
+        opponentPaddle.current.y = Math.max(0, opponentPaddle.current.y - PADDLE_SPEED)
+      } else if (ball.y > paddleCenter + 10) {
+        opponentPaddle.current.y = Math.min(CANVAS_HEIGHT - PADDLE_HEIGHT, opponentPaddle.current.y + PADDLE_SPEED)
+      }
     }
   }
 
@@ -530,14 +613,33 @@ export default function Game({ gameId, practiceMode = false, onExit }: GameProps
     const leftPaddle = leftPaddleRef.current
     const rightPaddle = rightPaddleRef.current
 
+    // Both clients update ball locally for smooth rendering
+    // Host is authoritative and sends updates, player receives and syncs
+    
     // Reset scored flag at start of frame
     if (scoredThisFrame.current && (ball.x >= 0 && ball.x <= CANVAS_WIDTH)) {
       scoredThisFrame.current = false
     }
 
-    // Move ball
-    ball.x += ball.dx
-    ball.y += ball.dy
+    // Move ball (both clients do this for smooth rendering)
+    // Only move if ball has velocity
+    if (ball.dx !== 0 || ball.dy !== 0) {
+      ball.x += ball.dx
+      ball.y += ball.dy
+    }
+    
+    // Host sends ball update to server for synchronization (throttled)
+    const isAuthoritative = practiceMode || isHostRef.current
+    if (isAuthoritative && !practiceMode && gameId && socketRef.current) {
+      const now = Date.now()
+      if (now - lastBallUpdateRef.current >= BALL_UPDATE_INTERVAL) {
+        socketRef.current.emit('ball-update', {
+          gameId,
+          ball: { ...ball }
+        })
+        lastBallUpdateRef.current = now
+      }
+    }
 
     // Ball collision with top/bottom walls
     if (ball.y <= BALL_SIZE / 2 || ball.y >= CANVAS_HEIGHT - BALL_SIZE / 2) {
@@ -606,6 +708,15 @@ export default function Game({ gameId, practiceMode = false, onExit }: GameProps
           
           const newScore = { ...prev, right: newRightScore }
           scoreRef.current = newScore
+          
+          // Sync score to server
+          if (!practiceMode && gameId && socketRef.current) {
+            socketRef.current.emit('score-update', {
+              gameId,
+              scores: newScore
+            })
+          }
+          
           return newScore
         })
       } else if (ball.x > CANVAS_WIDTH + BALL_SIZE) {
@@ -642,6 +753,15 @@ export default function Game({ gameId, practiceMode = false, onExit }: GameProps
           
           const newScore = { ...prev, left: newLeftScore }
           scoreRef.current = newScore
+          
+          // Sync score to server
+          if (!practiceMode && gameId && socketRef.current) {
+            socketRef.current.emit('score-update', {
+              gameId,
+              scores: newScore
+            })
+          }
+          
           return newScore
         })
       }
